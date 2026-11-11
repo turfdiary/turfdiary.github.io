@@ -59,6 +59,111 @@ function photoURL(id){
 function hydrate(){document.querySelectorAll("img[data-pid]:not([src])").forEach(function(img){photoURL(img.dataset.pid).then(function(u){if(u)img.src=u})})}
 function pimg(id,cls,alt){return '<img data-pid="'+esc(id)+'"'+(cls?' class="'+cls+'"':'')+' alt="'+esc(alt||"")+'">'}
 
+/* ---------- weather (U.S. National Weather Service, free open data) ---------- */
+var LS_WX="turfdiary-wx",wx=null,wxLoading=false,wxErr="";
+try{wx=JSON.parse(localStorage.getItem(LS_WX)||"null")}catch(e){wx=null}
+function wxKey(){return state.wxLoc?state.wxLoc.lat+","+state.wxLoc.lon:""}
+function saveQuiet(){try{localStorage.setItem(LS,JSON.stringify(state))}catch(e){}}
+function nwsJSON(u){
+  return fetch(u,{headers:{Accept:"application/geo+json"}}).then(function(r){
+    if(r.status===404)throw{code:"notfound"};
+    if(!r.ok)throw{code:"http"};
+    return r.json();
+  });
+}
+function loadWx(force){
+  var loc=state.wxLoc;
+  if(!loc||wxLoading)return;
+  if(!force&&wx&&wx.key===wxKey()&&Date.now()-wx.fetchedAt<1800000)return;
+  wxLoading=true;wxErr="";refreshWxCard();
+  var step=loc.forecastUrl?Promise.resolve(loc):nwsJSON("https://api.weather.gov/points/"+loc.lat+","+loc.lon).then(function(j){
+    var pr=j.properties||{};
+    if(!pr.forecast)throw{code:"notfound"};
+    var rl=pr.relativeLocation&&pr.relativeLocation.properties;
+    loc.forecastUrl=pr.forecast;loc.place=rl&&rl.city?rl.city+", "+rl.state:"Your area";saveQuiet();
+    return loc;
+  }).catch(function(e){throw{code:e&&e.code==="notfound"?"outside":"http"}});
+  step.then(function(l){
+    return nwsJSON(l.forecastUrl).catch(function(e){delete l.forecastUrl;saveQuiet();throw e});
+  }).then(function(j){
+    var ps=(j.properties&&j.properties.periods)||[];
+    if(!ps.length)throw{code:"http"};
+    wx={key:wxKey(),fetchedAt:Date.now(),periods:ps.slice(0,14).map(function(p){
+      return{name:p.name,start:p.startTime||"",day:!!p.isDaytime,temp:p.temperature,unit:p.temperatureUnit||"F",pop:p.probabilityOfPrecipitation?p.probabilityOfPrecipitation.value:null,short:p.shortForecast||"",wind:p.windSpeed||""};
+    })};
+    try{localStorage.setItem(LS_WX,JSON.stringify(wx))}catch(e){}
+  }).catch(function(e){
+    wxErr=e&&e.code==="outside"?"Weather is only available for locations in the United States.":"Couldn\u2019t load the forecast right now. The weather service may be busy, so try again in a few minutes.";
+  }).then(function(){wxLoading=false;refreshWxCard()});
+}
+function wxNowText(){
+  if(!wx||wx.key!==wxKey()||!wx.periods.length)return "";
+  var p=wx.periods[0];return p.short+", "+p.temp+"\u00b0"+p.unit;
+}
+function wxTips(ps){
+  var tips=[],soon=ps.slice(0,2),rain=null;
+  soon.forEach(function(p){if(p.pop!=null&&p.pop>=60&&(!rain||p.pop>rain.pop))rain=p});
+  if(rain)tips.push(["Rain likely: "+rain.name+", "+rain.pop+"% chance","You can probably skip watering. Check product labels before applying: some need rain to water them in, and others need a dry day."]);
+  var frost=ps.slice(0,3).filter(function(p){return !p.day&&p.unit==="F"&&p.temp<=32})[0];
+  if(frost)tips.push(["Frost possible: "+frost.name,"Stay off frosted grass, and wait for it to thaw before mowing."]);
+  var hot=ps.slice(0,3).filter(function(p){return p.day&&p.unit==="F"&&p.temp>=90})[0];
+  if(hot)tips.push(["Hot day: "+hot.name+", "+hot.temp+"\u00b0F","Mow early or late in the day, and raise the mower height a notch."]);
+  return tips;
+}
+function wxCardHTML(){
+  var h='<section class="soil" id="wx-card" aria-labelledby="wx-h"><h2 class="soil-h" id="wx-h">Weather</h2>';
+  if(!state.wxLoc){
+    return h+'<p class="note" style="margin:6px 0 12px">See your local forecast with rain and frost tips. Works for locations in the United States.</p>'+
+      '<button class="btn primary" data-act="wx-gps">Use my location</button>'+(wxErr?'<p class="err" role="alert">'+esc(wxErr)+'</p>':'')+'</section>';
+  }
+  var d=wx&&wx.key===wxKey()?wx:null;
+  if(state.wxLoc.place)h+='<p class="m" style="margin:0">'+esc(state.wxLoc.place)+'</p>';
+  if(!d){
+    if(wxErr)return h+'<p class="err" role="alert" style="margin-top:10px">'+esc(wxErr)+'</p><button class="btn" data-act="wx-retry">Try again</button></section>';
+    return h+'<p class="m" style="margin-top:10px">Loading the forecast\u2026</p></section>';
+  }
+  var n=d.periods[0];
+  h+='<div class="soil-top" style="margin-top:10px"><div><div class="soil-now">'+esc(n.temp)+'\u00b0'+esc(n.unit)+'</div><div class="m">'+esc(n.name+": "+n.short)+'</div></div>'+
+     (n.pop!=null?'<div class="soil-deep">'+esc(n.pop)+'% chance of rain</div>':'')+'</div>';
+  var days=[];
+  d.periods.forEach(function(p,i){
+    var last=days[days.length-1];
+    if(!p.day&&last&&last.low==null&&last.high!=null){last.low=p.temp;if(p.pop!=null)last.pop=Math.max(last.pop||0,p.pop);return}
+    var label=p.name;
+    if(i>0&&p.start){var dt=new Date(p.start.slice(0,10)+"T12:00:00");if(!isNaN(dt))label=dt.toLocaleDateString(undefined,{weekday:"short"})}
+    days.push({label:label,short:p.short,high:p.day?p.temp:null,low:p.day?null:p.temp,pop:p.pop});
+  });
+  h+='<div class="wx-list" aria-label="7-day forecast">'+days.slice(0,7).map(function(x){
+    return '<div class="wx-row"><span class="wx-name">'+esc(x.label)+'</span><span class="wx-short">'+esc(x.short)+'</span>'+
+      '<span class="wx-pop">'+(x.pop!=null&&x.pop>=20?esc(x.pop)+'%':'')+'</span>'+
+      '<span class="wx-temp">'+(x.high!=null?esc(x.high)+'\u00b0':'')+(x.low!=null?'<span class="wx-low"> '+esc(x.low)+'\u00b0</span>':'')+'</span></div>';
+  }).join("")+'</div>';
+  var tips=wxTips(d.periods);
+  if(tips.length)h+='<ul class="soil-tips">'+tips.map(function(t){return '<li><b>'+esc(t[0])+'</b>'+esc(t[1])+'</li>'}).join("")+'</ul>';
+  h+='<p class="src">'+(wxLoading?"Updating\u2026 ":"")+'Source: U.S. National Weather Service. Updated '+esc(new Date(d.fetchedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}))+'. Forecasts can change.</p>';
+  if(wxErr)h+='<p class="err" role="alert">'+esc(wxErr)+'</p>';
+  return h+'</section>';
+}
+function refreshWxCard(){var c=document.getElementById("wx-card");if(c)c.outerHTML=wxCardHTML();var s=document.getElementById("wx-settings");if(s)s.outerHTML=wxSettingsHTML()}
+function wxSettingsHTML(){
+  return '<div class="settings-block" id="wx-settings"><p>'+(state.wxLoc?'Showing weather for <b>'+esc(state.wxLoc.place||"your location")+'</b>.':'No location set. Weather works for locations in the United States.')+'</p>'+
+    '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="wx-gps">'+(state.wxLoc?"Update my location":"Use my location")+'</button>'+(state.wxLoc?'<button class="btn" data-act="wx-remove">Turn off weather</button>':'')+'</div>'+
+    (wxErr&&!state.wxLoc?'<p class="err" role="alert" style="margin-top:10px">'+esc(wxErr)+'</p>':'')+
+    '<p class="src">Your location is rounded to within about a mile and sent only to the National Weather Service to get your forecast.</p></div>';
+}
+function wxUseGPS(){
+  wxErr="";
+  if(!navigator.geolocation){wxErr="This device can\u2019t share its location.";refreshWxCard();return}
+  setStatus("Finding your location\u2026");
+  navigator.geolocation.getCurrentPosition(function(pos){
+    setStatus("");
+    state.wxLoc={lat:Math.round(pos.coords.latitude*100)/100,lon:Math.round(pos.coords.longitude*100)/100};
+    wx=null;persist();loadWx(true);
+  },function(){
+    setStatus("");wxErr="Location wasn\u2019t shared. Allow location for TurfDiary in your phone\u2019s settings, then try again.";render();
+  },{enableHighAccuracy:false,timeout:15000,maximumAge:600000});
+}
+
 /* ---------- views ---------- */
 function ordinal(n){var s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])}
 function tally(e){
@@ -72,7 +177,7 @@ function tally(e){
 function entryRow(e,del){
   var d=parse(e.date);
   return '<div class="item"><div class="date"><span>'+d.getDate()+'</span><small>'+esc(d.toLocaleDateString(undefined,{month:"short"}))+'</small></div>'+
-    '<div class="grow"><div class="t">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+
+    '<div class="grow"><div class="t">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.weather?'<div class="m">Weather: '+esc(e.weather)+'</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+
     (e.photos&&e.photos.length?'<div class="row-thumbs">'+e.photos.map(function(id,i){return '<button class="rthumb" data-act="view-photo" data-id="'+esc(id)+'" aria-label="View '+esc(e.task)+' photo '+(i+1)+'">'+pimg(id)+'</button>'}).join("")+'</div>':'')+'</div>'+
     (e.cost?'<div class="cost">'+money(e.cost)+'</div>':'')+
     (del?'<div class="row-acts"><button class="btn small" data-act="edit-entry" data-id="'+esc(e.id)+'" aria-label="Edit '+esc(e.task)+' on '+esc(fmt(e.date))+'">Edit</button><button class="btn small ghost" data-act="del-entry" data-id="'+esc(e.id)+'" aria-label="Delete '+esc(e.task)+' on '+esc(fmt(e.date))+'">Delete</button></div>':'')+'</div>';
@@ -106,6 +211,7 @@ function viewHome(){
   else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" days ago";sub=fmtLong(last)}
   var h='<section class="hero"><div class="hero-top"><span>Last mow</span><span class="status-text" id="status" aria-live="polite">'+esc(statusText)+'</span></div>'+
     '<div class="big">'+esc(big)+'</div><div class="hero-sub">'+esc(sub)+'</div><button class="btn" data-act="open-log">Log work</button></section>';
+  h+=wxCardHTML();
   h+='<h2>Coming up</h2>';
   var items=dueItems();
   if(!items.length)h+='<p class="empty">No reminders set. <button class="link" data-act="tab" data-tab="remind">Add a reminder</button></p>';
@@ -172,7 +278,7 @@ function viewRemind(){
   return h;
 }
 function viewSettings(){
-  var h='<h1 class="page">Settings</h1><h2 style="margin-top:0">Backup</h2><div class="settings-block"><p>Your log and photos are saved only on this phone. Save a backup file now and then, especially before switching phones.</p>'+
+  var h='<h1 class="page">Settings</h1><h2 style="margin-top:0">Weather</h2>'+wxSettingsHTML()+'<h2>Backup</h2><div class="settings-block"><p>Your log and photos are saved only on this phone. Save a backup file now and then, especially before switching phones.</p>'+
      '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="export">Save backup</button><label class="btn file-btn">Restore backup<input type="file" accept="application/json,.json" class="vh" data-act="import" aria-label="Choose a backup file to restore"></label></div>'+
      '<p class="err" id="backup-msg" role="status" style="margin-top:10px"></p></div>';
   return h;
@@ -301,14 +407,14 @@ function saveLog(){
     for(var mi=0;mi<sheetTasks.length;mi++){
       var t=sheetTasks[mi],v=multiVals[t]||{},c=0;
       if(v.c&&String(v.c).trim()){c=parseFloat(v.c);if(isNaN(c)||c<0){err.textContent="Enter the cost for "+t+" as a number, like 24.99.";return}}
-      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV});
+      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV,weather:date===todayISO()?wxNowText():""});
     }
     newUploads=[];
     recs.forEach(function(r){state.entries.push(r)});
     setStatus(recs.length+" tasks logged");closeSheet();persist();return;
   }
   var rec={date:date,task:sheetTask,cost:Math.round(cost*100)/100,note:document.getElementById("f-note").value.trim().slice(0,300),product:document.getElementById("f-product").value.trim().slice(0,80),photos:formPhotos.slice()};
-  if(sheetMode!=="expense")rec.soilTemp=soilV;
+  if(sheetMode!=="expense"){rec.soilTemp=soilV;if(!editId&&date===todayISO()&&wxNowText())rec.weather=wxNowText()}
   origPhotos.forEach(function(id){if(formPhotos.indexOf(id)<0)dropPhoto(id,editId)});
   newUploads=[];
   var ex=editId?state.entries.find(function(x){return x.id===editId}):null;
@@ -378,7 +484,7 @@ document.addEventListener("click",function(ev){
   else if(a==="done-today"){
     var task=el.dataset.task,t=todayISO();
     if(state.entries.some(function(e){return e.task===task&&e.date===t})){setStatus(task+" is already logged for today");return}
-    state.entries.push({id:uid(),date:t,task:task,cost:0,note:"",product:"",photos:[],quick:true});setStatus(task+" logged for today");persist();
+    state.entries.push({id:uid(),date:t,task:task,cost:0,note:"",product:"",photos:[],quick:true,weather:wxNowText()});setStatus(task+" logged for today");persist();
   }
   else if(a==="edit-entry"){var en=state.entries.find(function(x){return x.id===el.dataset.id});if(en)openSheet(en.task,en.cost||"",en.note,en.product,en.date,en.id,null,en.photos,en.soilTemp)}
   else if(a==="view-photo")openViewer(el.dataset.id);
@@ -408,6 +514,9 @@ document.addEventListener("click",function(ev){
     state.schedules.push({task:document.getElementById("new-task").value,every:n});persist();
   }
   else if(a==="export")exportBackup();
+  else if(a==="wx-gps")wxUseGPS();
+  else if(a==="wx-retry")loadWx(true);
+  else if(a==="wx-remove"){state.wxLoc=null;wx=null;wxErr="";try{localStorage.removeItem(LS_WX)}catch(e){}persist()}
   else if(a==="confirm-import")confirmImport();
 });
 document.addEventListener("change",function(ev){
@@ -420,5 +529,7 @@ document.addEventListener("change",function(ev){
 });
 
 render();
+loadWx(false);
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")loadWx(false)});
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
 })();

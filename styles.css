@@ -123,3 +123,18 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .mt-row{display:grid;grid-template-columns:1fr 104px;gap:6px 8px;margin-top:12px;font-weight:400}
 .mt-name{grid-column:1/-1;font-weight:600;color:var(--grass)}
 .mt-row input{width:100%;min-width:0}
+
+/* weather */
+.wx-list{margin-top:12px;border-top:1px solid var(--line)}
+.wx-row{display:grid;grid-template-columns:3.6em 1fr 2.6em 4.6em;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:15px;align-items:baseline}
+.wx-short{font-size:14px;line-height:1.3}
+.wx-pop{color:var(--rain);font-size:13px;font-weight:600;text-align:right}
+.wx-low{color:var(--muted);font-weight:500}
+.wx-name{font-weight:600}
+.wx-short{color:var(--muted)}
+.wx-temp{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+
+:root{--rain:#2F6FAE}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--rain:#8DBDEB}}
+:root[data-theme="dark"]{--rain:#8DBDEB}
+@media (max-width:380px){nav.tabs button{font-size:13px;padding-left:2px;padding-right:2px}}
