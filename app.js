@@ -565,6 +565,48 @@ function notifyHTML(){
   return h;
 }
 
+/* ---------- "just mowed" animation: a mower drives up a stripe and leaves a fresh-cut line ---------- */
+function playMowAnim(){
+  if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  var hero=document.querySelector(".hero");if(!hero||!hero.animate)return;
+  var w=hero.clientWidth,h=hero.clientHeight,A=100*Math.PI/180;
+  /* geometry of the card's striped background: repeating-linear-gradient(100deg, dark 0-44px, light 44-88px) */
+  var d=[Math.sin(A),-Math.cos(A)],perp=[-d[1],d[0]],L=Math.abs(w*Math.sin(A))+Math.abs(h*Math.cos(A));
+  var st=[w/2-d[0]*L/2,h/2-d[1]*L/2],pc=L/2;
+  var n0=Math.round((pc-66)/88),passes=[];
+  [-1,0,1,2].forEach(function(k,i){
+    var p=66+88*(n0+k),base=[st[0]+d[0]*p,st[1]+d[1]*p];
+    function at(y){var t=(y-base[1])/perp[1];return[base[0]+perp[0]*t,base[1]+perp[1]*t]}
+    var B=at(h+44),T=at(-44);
+    passes.push(i%2===0?{from:B,to:T,up:true}:{from:T,to:B,up:false});
+  });
+  var len=h+88,P=820,N=passes.length,total=P*N;
+  var under=document.createElement("div");under.className="mow-anim under";under.setAttribute("aria-hidden","true");
+  var layer=document.createElement("div");layer.className="mow-anim";layer.setAttribute("aria-hidden","true");
+  var mower=document.createElement("div");mower.className="mow-sprite";
+  mower.innerHTML='<svg viewBox="0 0 40 52"><rect x="6" y="10" width="28" height="26" rx="7" fill="#F4F6F1" stroke="#1F4526" stroke-width="2"/><rect x="11" y="15" width="18" height="16" rx="5" fill="#CDD6CB"/><rect x="2" y="12" width="5" height="9" rx="2" fill="#26332A"/><rect x="33" y="12" width="5" height="9" rx="2" fill="#26332A"/><rect x="2" y="26" width="5" height="9" rx="2" fill="#26332A"/><rect x="33" y="26" width="5" height="9" rx="2" fill="#26332A"/><path d="M11 36v12h18V36" fill="none" stroke="#1F4526" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="6" r="2" fill="#B8E3A8"/><circle cx="20" cy="3.5" r="1.6" fill="#B8E3A8"/><circle cx="28" cy="6" r="2" fill="#B8E3A8"/></svg>';
+  var ease="cubic-bezier(.45,.05,.45,1)";
+  passes.forEach(function(ps,i){
+    var tr=document.createElement("div");tr.className="mow-trail";tr.style.height=len+"px";
+    if(ps.up){tr.style.transformOrigin="50% 100%";tr.style.left=(ps.from[0]-24)+"px";tr.style.top=(ps.from[1]-len)+"px"}
+    else{tr.style.transformOrigin="50% 0%";tr.style.left=(ps.from[0]-24)+"px";tr.style.top=ps.from[1]+"px"}
+    under.appendChild(tr);
+    tr.animate([{transform:"rotate(10deg) scaleY(0)"},{transform:"rotate(10deg) scaleY(1)"}],{duration:P,delay:i*P,easing:ease,fill:"both"});
+  });
+  var kf=[];
+  passes.forEach(function(ps,i){
+    var rot=ps.up?10:190;
+    function tf(pt){return "translate("+(pt[0]-20)+"px,"+(pt[1]-26)+"px) rotate("+rot+"deg)"}
+    kf.push({offset:i/N,transform:tf(ps.from),easing:ease});
+    kf.push({offset:Math.max(i/N+.001,(i+1)/N-.002),transform:tf(ps.to)});
+  });
+  layer.appendChild(mower);hero.insertBefore(under,hero.firstChild);hero.appendChild(layer);
+  mower.animate(kf,{duration:total,fill:"forwards"});
+  var fade=[{opacity:1},{opacity:1,offset:total/(total+700)},{opacity:0}];
+  layer.animate(fade,{duration:total+700,fill:"forwards"}).onfinish=function(){layer.remove()};
+  under.animate(fade,{duration:total+700,fill:"forwards"}).onfinish=function(){under.remove()};
+}
+
 /* ---------- views ---------- */
 function ordinal(n){var s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])}
 function tally(e){
@@ -608,17 +650,20 @@ function allPhotos(){
 }
 function viewHome(){
   var t=todayISO(),last=lastDone("Mow"),big,sub,yr=t.slice(0,4);
-  var mows=state.entries.filter(function(e){return e.task==="Mow"&&e.date.slice(0,4)===yr}).length;
   if(!last){big="Not yet";sub="Log a mow to start the count."}
-  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" days ago";sub=fmtLong(last)+(mows?". "+mows+" "+pl(mows,"mow")+" this year":"")}
+  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" days ago";sub=fmtLong(last)}
   var ms=state.schedules.find(function(x){return x.task==="Mow"}),next="";
   if(ms&&last){var due=addDays(last,Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?"Mowing is "+(-dd)+" "+pl(-dd,"day")+" overdue":dd===0?"Next mow: today":dd===1?"Next mow: tomorrow":"Next mow: "+fmtWeekday(due)+" (in "+dd+" days)"}
   var sq=lawnSqft(),lf=lastDone("Fertilize"),spent=state.entries.reduce(function(a,e){return a+(e.date.slice(0,4)===yr&&e.cost>0?e.cost:0)},0);
   var fd=lf?daysBetween(lf,t):null,fertTxt=lf?(fd<=0?"Today":fd===1?"Yesterday":fd+" days"):"Not yet",fertNote=lf?(fd>1?"ago":"")+(lastProduct("Fertilize")?(fd>1?", ":"")+lastProduct("Fertilize"):""):"";
+  var qm=state.entries.find(function(e){return e.task==="Mow"&&e.date===t&&e.quick});
+  var mowBtn=qm?'<button class="mow-btn done" data-act="undo-today" data-id="'+esc(qm.id)+'" aria-label="Undo today\u2019s mow">'+ICONS.mower+'<span>Undo</span></button>'
+    :'<button class="mow-btn" data-act="done-today" data-task="Mow" aria-label="Log a mow for today">'+ICONS.mower+'<span>Mowed today</span></button>';
   function tile(act,extra,label,value,note){return '<button class="hero-tile" data-act="'+act+'"'+extra+'><span class="ht-l">'+esc(label)+'</span><span class="ht-v">'+esc(value)+'</span>'+(note?'<span class="ht-n">'+esc(note)+'</span>':'')+'</button>'}
   var h='<header class="app-head"><span class="app-name">TurfDiary</span><button class="icon-btn" data-act="tab" data-tab="settings" aria-label="Settings">'+ICONS.gear+'</button></header>'+
-    '<section class="hero"><div class="hero-top"><span>Last mow</span><span class="status-text" id="status" aria-live="polite">'+esc(statusText)+'</span></div>'+
+    '<section class="hero"><div class="hero-top"><span>Last mow</span>'+mowBtn+'</div>'+
     '<div class="big">'+esc(big)+'</div><div class="hero-sub">'+esc(sub)+'</div>'+(next?'<div class="hero-next">'+esc(next)+'</div>':'')+
+    '<div class="hero-status" id="status" aria-live="polite">'+esc(statusText)+'</div>'+
     '<div class="hero-tiles">'+
       tile("tab",' data-tab="settings"',"Lawn",sq>0?fmtInt(sq):"Measure",sq>0?"sq ft":"tap to start")+
       tile("open-log",' data-task="Fertilize" aria-label="Log fertilizer. Last fertilized: '+esc(fertTxt+(fertNote?" "+fertNote:""))+'"',"Fertilized",fertTxt,fertNote)+
@@ -702,7 +747,8 @@ var ICONS={
   products:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/><path d="M9.5 13.5c1.5 1 3.5 1 5 0"/></svg>',
   spend:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M7 9.5v5M17 9.5v5"/></svg>',
   gear:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>',
-  plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
+  plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  mower:'<svg viewBox="0 0 32 24" aria-hidden="true"><path d="M17 12.5L27 2.5"/><path d="M25 1.5l3.5 3.5"/><path d="M3.5 17.5v-3.2a2 2 0 0 1 2-2H19l2.5 3v2.2"/><path d="M9 12.3V9.8h6v2.5"/><circle cx="7" cy="19" r="2.6"/><circle cx="18.5" cy="19" r="2.6"/><path d="M9.6 19h6.3"/><path d="M1.5 22.5h29" stroke-dasharray="1.5 2"/></svg>'
 };
 function viewProducts(){
   return '<h1 class="page">Products</h1><div class="toolbar" style="justify-content:flex-start;margin-bottom:6px"><button class="btn primary" data-act="prod-new">Add a product</button><button class="btn" data-act="scan-lookup">Scan a barcode</button></div>'+
@@ -921,6 +967,7 @@ document.addEventListener("click",function(ev){
     var task=el.dataset.task,t=todayISO();
     if(state.entries.some(function(e){return e.task===task&&e.date===t})){setStatus(task+" is already logged for today");return}
     state.entries.push({id:uid(),date:t,task:task,cost:0,note:"",product:"",photos:[],quick:true,weather:wxNowText()});setStatus(task+" logged for today");persist();
+    if(el.classList.contains("mow-btn"))playMowAnim();
   }
   else if(a==="edit-entry"){var en=state.entries.find(function(x){return x.id===el.dataset.id});if(en)openSheet(en.task,en.cost||"",en.note,en.product,en.date,en.id,null,en.photos,en.soilTemp)}
   else if(a==="view-photo")openViewer(el.dataset.id);

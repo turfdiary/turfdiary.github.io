@@ -344,3 +344,27 @@ nav.tabs .plus-btn svg{width:28px;height:28px;stroke-width:2.6}
 .switch:checked{background:var(--grass)}
 .switch:checked::after{transform:translateX(20px)}
 .notify-opts fieldset{margin-bottom:10px}
+
+/* quick mow button */
+.hero-top{align-items:center}
+.mow-btn{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:700;font-size:14px;background:#fff;color:#21502A;border:0;border-radius:999px;padding:7px 14px 7px 10px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.mow-btn svg{width:34px;height:26px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mow-btn.done{background:rgba(255,255,255,.18);color:#fff;box-shadow:none;border:1.5px solid rgba(255,255,255,.7)}
+.hero-status{font-size:14px;font-weight:600;min-height:0;margin:-6px 0 10px}
+.hero-status:empty{display:none}
+
+/* even spacing under the big Last mow value */
+.hero .big{line-height:1.05;margin:10px 0 10px}
+.hero-sub{line-height:1.35;margin-bottom:12px}
+
+/* mow animation */
+.hero{position:relative;overflow:hidden}
+.mow-anim{position:absolute;inset:0;pointer-events:none;z-index:2}
+.mow-trail{position:absolute;width:48px;transform-origin:50% 100%;background:linear-gradient(90deg,rgba(255,255,255,0) 0,rgba(214,240,190,.38) 18%,rgba(214,240,190,.38) 82%,rgba(255,255,255,0) 100%);transform:rotate(10deg) scaleY(0)}
+.mow-sprite{position:absolute;left:0;top:0;width:40px;height:52px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+.mow-sprite svg{width:40px;height:52px;display:block}
+
+.hero>*:not(.mow-anim){position:relative;z-index:1}
+.mow-anim.under{z-index:0}
+.ht-v{font-size:19px;letter-spacing:-.01em}
+@media (max-width:370px){.ht-v{font-size:16.5px}}
