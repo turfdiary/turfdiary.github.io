@@ -115,20 +115,25 @@ function wxDays(periods){
   var days=[];
   periods.forEach(function(p,i){
     var last=days[days.length-1];
-    if(!p.day&&last&&last.low==null&&last.high!=null){last.low=p.temp;last.night=p.short;if(p.pop!=null)last.pop=Math.max(last.pop==null?0:last.pop,p.pop);return}
+    if(!p.day&&last&&last.low==null&&last.high!=null){last.low=p.temp;last.night=p.short;last.nightPop=p.pop;if(p.pop!=null)last.pop=Math.max(last.pop==null?0:last.pop,p.pop);return}
     var label=i===0?(p.day?"Today":"Tonight"):p.name,full=i===0?label:p.name;
     if(i>0&&p.start){var dt=new Date(p.start.slice(0,10)+"T12:00:00");if(!isNaN(dt)){label=dt.toLocaleDateString(undefined,{weekday:"short"});full=dt.toLocaleDateString(undefined,{weekday:"long"})}}
-    days.push({label:label,full:full,short:p.short,high:p.day?p.temp:null,low:p.day?null:p.temp,pop:p.pop});
+    days.push({label:label,full:full,short:p.short,high:p.day?p.temp:null,low:p.day?null:p.temp,pop:p.pop,dayPop:p.day?p.pop:null,nightPop:p.day?null:p.pop,night:p.day?null:p.short});
   });
   return days.slice(0,7);
 }
+function wxBarDays(periods){return wxDays(periods).slice(1)}
 function wxDayText(x){
   if(!x)return "";
   var t=x.full+": "+x.short+(x.night&&wxKind(x.night,true)!==wxKind(x.short,true)&&/rain|shower|drizzle|thunder|snow|sleet/i.test(x.night)?", then "+x.night.toLowerCase()+" at night":"")+".";
   if(x.high!=null)t+=" High "+x.high+"\u00b0";
   if(x.low!=null)t+=(x.high!=null?", low ":" Low ")+x.low+"\u00b0";
-  if(x.pop!=null)t+=", "+x.pop+"% chance of rain";
-  return t+".";
+  t+=".";
+  var pp=[];
+  if(x.dayPop!=null)pp.push(x.dayPop+"% during the day");
+  if(x.nightPop!=null)pp.push(x.nightPop+"% at night");
+  if(pp.length)t+=" Chance of rain: "+pp.join(", ")+".";
+  return t;
 }
 function wxIconText(x){var dk=wxKind(x.short,false);if((dk==="sun"||dk==="partly"||dk==="cloud")&&x.night&&x.pop!=null&&x.pop>=50&&/rain|shower|drizzle|thunder/i.test(x.night))return /thunder/i.test(x.night)?"chance thunderstorms":"chance showers";return x.short}
 function wxKind(text,night){
@@ -174,17 +179,24 @@ function wxCardHTML(){
     if(wxErr)return h+'<p class="err" role="alert" style="margin-top:10px">'+esc(wxErr)+'</p><button class="btn" data-act="wx-retry">Try again</button></section>';
     return h+'<p class="m" style="margin-top:10px">Loading the forecast\u2026</p></section>';
   }
-  var n=d.periods[0],days=wxDays(d.periods),t0=days[0];
+  var all=wxDays(d.periods),t0=all[0],days=all.slice(1);
   if(wxSel>=days.length)wxSel=0;
-  var rainTxt=t0&&t0.pop!=null?t0.pop+"% chance of rain "+(t0.high!=null&&t0.low!=null?"today or tonight":t0.high!=null?"today":"tonight"):"";
-  h+='<div class="soil-top" style="margin-top:10px"><div><div class="soil-now">'+esc(n.temp)+'\u00b0'+esc(n.unit)+'</div><div class="m">'+esc((t0?t0.label:n.name)+": "+n.short)+'</div></div>'+
-     (rainTxt?'<div class="soil-deep">'+esc(rainTxt)+'</div>':'')+'</div>';
-  h+='<div class="wx-strip" role="group" aria-label="7-day forecast">'+days.map(function(x,i){
+  var isDay=t0.high!=null;
+  h+='<div class="wx-today"><div class="wx-today-main"><div class="soil-now">'+esc(isDay?t0.high:t0.low)+'\u00b0<small>'+(isDay?"High today":"Low tonight")+'</small></div>'+
+     '<div class="wx-today-text">'+esc(isDay?t0.short:t0.night||t0.short)+(isDay&&t0.low!=null?'. Low tonight '+esc(t0.low)+'\u00b0':'')+'</div></div>'+
+     '<div class="wx-today-ic">'+wxIcon(isDay?t0.short:(t0.night||t0.short),!isDay)+'</div></div>';
+  function dnRow(night,label,text,pop){
+    return '<div class="wx-dn-row"><span class="wx-dn-ic">'+wxIcon(night?"clear":"sunny",night)+'</span><span class="wx-dn-lbl"><b>'+esc(label)+'</b>'+esc(text)+'</span>'+
+      '<span class="wx-dn-pop'+(pop!=null&&pop>=20?' wet':'')+'">'+(pop!=null?esc(pop)+'%':'\u2013')+'<small>rain</small></span></div>';
+  }
+  h+='<div class="wx-dn">'+(isDay?dnRow(false,"Day",t0.short,t0.dayPop):"")+(t0.night?dnRow(true,"Tonight",t0.night,t0.nightPop):"")+'</div>';
+  h+='<div class="wx-strip" style="grid-template-columns:repeat('+days.length+',minmax(0,1fr))" role="group" aria-label="'+days.length+'-day forecast">'+days.map(function(x,i){
+    function pp(night,v){return '<span class="wx-pp'+(v!=null&&v>=20?' wet':'')+'">'+(night?'<i class="pp-moon"></i>':'<i class="pp-sun"></i>')+(v!=null?esc(v)+'%':'\u2013')+'</span>'}
     return '<button type="button" class="wx-day'+(i===wxSel?' sel':'')+'" data-act="wx-day" data-i="'+i+'" aria-pressed="'+(i===wxSel)+'" aria-label="'+esc(wxDayText(x))+'">'+
       '<span class="wx-dname">'+esc(x.label)+'</span>'+wxIcon(wxIconText(x),x.high==null)+
-      '<span class="wx-dpop'+(x.pop!=null&&x.pop>=20?' wet':'')+'">'+(x.pop!=null?esc(x.pop)+'%':'\u2013')+'</span>'+
       '<span class="wx-hi">'+(x.high!=null?esc(x.high)+'\u00b0':'\u2013')+'</span>'+
-      '<span class="wx-lo">'+(x.low!=null?esc(x.low)+'\u00b0':'')+'</span></button>';
+      '<span class="wx-lo">'+(x.low!=null?esc(x.low)+'\u00b0':'')+'</span>'+
+      '<span class="wx-pps">'+pp(false,x.dayPop)+pp(true,x.nightPop)+'</span></button>';
   }).join("")+'</div>';
   h+='<p class="wx-detail" id="wx-detail" aria-live="polite">'+esc(wxDayText(days[wxSel]))+'</p>';
   var tips=wxTips(d.periods);
@@ -565,7 +577,7 @@ document.addEventListener("click",function(ev){
   else if(a==="export")exportBackup();
   else if(a==="wx-gps")wxUseGPS();
   else if(a==="wx-retry")loadWx(true);
-  else if(a==="wx-day"){wxSel=+el.dataset.i;document.querySelectorAll(".wx-day").forEach(function(b,i){b.classList.toggle("sel",i===wxSel);b.setAttribute("aria-pressed",String(i===wxSel))});var dd=document.getElementById("wx-detail");if(dd&&wx)dd.textContent=wxDayText(wxDays(wx.periods)[wxSel])}
+  else if(a==="wx-day"){wxSel=+el.dataset.i;document.querySelectorAll(".wx-day").forEach(function(b,i){b.classList.toggle("sel",i===wxSel);b.setAttribute("aria-pressed",String(i===wxSel))});var dd=document.getElementById("wx-detail");if(dd&&wx)dd.textContent=wxDayText(wxBarDays(wx.periods)[wxSel])}
   else if(a==="wx-remove"){state.wxLoc=null;wx=null;wxErr="";try{localStorage.removeItem(LS_WX)}catch(e){}persist()}
   else if(a==="confirm-import")confirmImport();
 });

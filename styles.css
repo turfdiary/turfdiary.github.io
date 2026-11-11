@@ -140,7 +140,7 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 @media (max-width:380px){nav.tabs button{font-size:13px;padding-left:2px;padding-right:2px}}
 
 /* 7-day forecast strip */
-:root{--sun:#F2B33D;--moon:#E8D9A8;--cloud:#FFFFFF;--cloud-edge:#9AA8A0}
+:root{--sun:#F2B33D;--moon:#CBAE55;--cloud:#FFFFFF;--cloud-edge:#9AA8A0}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--cloud:#C9D3CC;--cloud-edge:#6F7D74;--moon:#E3D6A6}}
 :root[data-theme="dark"]{--cloud:#C9D3CC;--cloud-edge:#6F7D74;--moon:#E3D6A6}
 .wx-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));margin-top:14px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg)}
@@ -156,3 +156,24 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .wx-lo{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.2em}
 .wx-detail{font-size:14px;color:var(--muted);margin:8px 0 0;min-height:1.4em}
 @media (max-width:370px){.wx-ic{width:28px;height:28px}.wx-hi{font-size:17px}.wx-dname{font-size:10px}}
+
+/* today panel + day/night rain */
+.wx-today{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px}
+.wx-today-main{min-width:0}
+.wx-today .soil-now small{display:inline;font-size:15px}
+.wx-today-text{color:var(--muted);font-size:15px;margin-top:4px}
+.wx-today-ic .wx-ic{width:76px;height:76px;margin:0}
+.wx-dn{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.wx-dn-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);background:var(--bg)}
+.wx-dn-row:first-child{border-top:0}
+.wx-dn-ic .wx-ic{width:26px;height:26px;margin:0}
+.wx-dn-lbl{flex:1;min-width:0;font-size:15px;color:var(--muted)}
+.wx-dn-lbl b{color:var(--ink);margin-right:6px}
+.wx-dn-pop{font-weight:700;font-size:17px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.wx-dn-pop small{font-size:12px;font-weight:600;margin-left:3px}
+.wx-dn-pop.wet{color:var(--rain);font-weight:800}
+.wx-pps{display:flex;flex-direction:column;align-items:center;gap:1px;margin-top:3px}
+.wx-pp{display:flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.wx-pp.wet{color:var(--rain);font-weight:800}
+.pp-sun,.pp-moon{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--sun)}
+.pp-moon{background:transparent;box-shadow:inset -2.5px 0 0 0 var(--moon);transform:rotate(-20deg)}
