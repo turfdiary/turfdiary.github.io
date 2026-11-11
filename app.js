@@ -115,8 +115,8 @@ function wxDays(periods){
   var days=[];
   periods.forEach(function(p,i){
     var last=days[days.length-1];
-    if(!p.day&&last&&last.low==null&&last.high!=null){last.low=p.temp;last.night=p.short;if(p.pop!=null)last.pop=Math.max(last.pop||0,p.pop);return}
-    var label=i===0?(p.day?"Today":"Tonight"):p.name,full=p.name;
+    if(!p.day&&last&&last.low==null&&last.high!=null){last.low=p.temp;last.night=p.short;if(p.pop!=null)last.pop=Math.max(last.pop==null?0:last.pop,p.pop);return}
+    var label=i===0?(p.day?"Today":"Tonight"):p.name,full=i===0?label:p.name;
     if(i>0&&p.start){var dt=new Date(p.start.slice(0,10)+"T12:00:00");if(!isNaN(dt)){label=dt.toLocaleDateString(undefined,{weekday:"short"});full=dt.toLocaleDateString(undefined,{weekday:"long"})}}
     days.push({label:label,full:full,short:p.short,high:p.day?p.temp:null,low:p.day?null:p.temp,pop:p.pop});
   });
@@ -127,7 +127,7 @@ function wxDayText(x){
   var t=x.full+": "+x.short+(x.night&&wxKind(x.night,true)!==wxKind(x.short,true)&&/rain|shower|drizzle|thunder|snow|sleet/i.test(x.night)?", then "+x.night.toLowerCase()+" at night":"")+".";
   if(x.high!=null)t+=" High "+x.high+"\u00b0";
   if(x.low!=null)t+=(x.high!=null?", low ":" Low ")+x.low+"\u00b0";
-  if(x.pop!=null&&x.pop>0)t+=", "+x.pop+"% chance of rain";
+  if(x.pop!=null)t+=", "+x.pop+"% chance of rain";
   return t+".";
 }
 function wxIconText(x){var dk=wxKind(x.short,false);if((dk==="sun"||dk==="partly"||dk==="cloud")&&x.night&&x.pop!=null&&x.pop>=50&&/rain|shower|drizzle|thunder/i.test(x.night))return /thunder/i.test(x.night)?"chance thunderstorms":"chance showers";return x.short}
@@ -174,15 +174,15 @@ function wxCardHTML(){
     if(wxErr)return h+'<p class="err" role="alert" style="margin-top:10px">'+esc(wxErr)+'</p><button class="btn" data-act="wx-retry">Try again</button></section>';
     return h+'<p class="m" style="margin-top:10px">Loading the forecast\u2026</p></section>';
   }
-  var n=d.periods[0];
-  h+='<div class="soil-top" style="margin-top:10px"><div><div class="soil-now">'+esc(n.temp)+'\u00b0'+esc(n.unit)+'</div><div class="m">'+esc(n.name+": "+n.short)+'</div></div>'+
-     (n.pop!=null?'<div class="soil-deep">'+esc(n.pop)+'% chance of rain</div>':'')+'</div>';
-  var days=wxDays(d.periods);
+  var n=d.periods[0],days=wxDays(d.periods),t0=days[0];
   if(wxSel>=days.length)wxSel=0;
+  var rainTxt=t0&&t0.pop!=null?t0.pop+"% chance of rain "+(t0.high!=null&&t0.low!=null?"today or tonight":t0.high!=null?"today":"tonight"):"";
+  h+='<div class="soil-top" style="margin-top:10px"><div><div class="soil-now">'+esc(n.temp)+'\u00b0'+esc(n.unit)+'</div><div class="m">'+esc((t0?t0.label:n.name)+": "+n.short)+'</div></div>'+
+     (rainTxt?'<div class="soil-deep">'+esc(rainTxt)+'</div>':'')+'</div>';
   h+='<div class="wx-strip" role="group" aria-label="7-day forecast">'+days.map(function(x,i){
     return '<button type="button" class="wx-day'+(i===wxSel?' sel':'')+'" data-act="wx-day" data-i="'+i+'" aria-pressed="'+(i===wxSel)+'" aria-label="'+esc(wxDayText(x))+'">'+
       '<span class="wx-dname">'+esc(x.label)+'</span>'+wxIcon(wxIconText(x),x.high==null)+
-      '<span class="wx-dpop">'+(x.pop!=null&&x.pop>=20?esc(x.pop)+'%':'')+'</span>'+
+      '<span class="wx-dpop'+(x.pop!=null&&x.pop>=20?' wet':'')+'">'+(x.pop!=null?esc(x.pop)+'%':'\u2013')+'</span>'+
       '<span class="wx-hi">'+(x.high!=null?esc(x.high)+'\u00b0':'\u2013')+'</span>'+
       '<span class="wx-lo">'+(x.low!=null?esc(x.low)+'\u00b0':'')+'</span></button>';
   }).join("")+'</div>';
