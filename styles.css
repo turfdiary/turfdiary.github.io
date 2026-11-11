@@ -162,7 +162,12 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .wx-today-main{min-width:0}
 .wx-today .soil-now small{display:inline;font-size:15px}
 .wx-today-text{color:var(--muted);font-size:15px;margin-top:4px}
-.wx-today-ic .wx-ic{width:76px;height:76px;margin:0}
+.wx-today-ic{display:flex;flex-direction:column;align-items:center;flex:none}
+.wx-today-ic .wx-ic{width:70px;height:70px;margin:0}
+.wx-today-pops{display:flex;gap:10px;margin-top:2px}
+.wx-pp.big{font-size:14px}
+.wx-pp.big .pp-sun,.wx-pp.big .pp-moon{width:9px;height:9px}
+.wx-pp.big .pp-moon{box-shadow:inset -3px 0 0 0 var(--moon)}
 .wx-dn{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .wx-dn-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line);background:var(--bg)}
 .wx-dn-row:first-child{border-top:0}

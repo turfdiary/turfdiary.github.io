@@ -182,14 +182,13 @@ function wxCardHTML(){
   var all=wxDays(d.periods),t0=all[0],days=all.slice(1);
   if(wxSel>=days.length)wxSel=0;
   var isDay=t0.high!=null;
+  function tp(night,v,label){return '<span class="wx-pp big'+(v!=null&&v>=20?' wet':'')+'" title="'+label+' rain chance">'+(night?'<i class="pp-moon"></i>':'<i class="pp-sun"></i>')+(v!=null?esc(v)+'%':'\u2013')+'</span>'}
+  var todayText=isDay?t0.short+(t0.night?'. Tonight: '+t0.night.toLowerCase()+', low '+t0.low+'\u00b0':t0.low!=null?'. Low tonight '+t0.low+'\u00b0':''):(t0.night||t0.short);
   h+='<div class="wx-today"><div class="wx-today-main"><div class="soil-now">'+esc(isDay?t0.high:t0.low)+'\u00b0<small>'+(isDay?"High today":"Low tonight")+'</small></div>'+
-     '<div class="wx-today-text">'+esc(isDay?t0.short:t0.night||t0.short)+(isDay&&t0.low!=null?'. Low tonight '+esc(t0.low)+'\u00b0':'')+'</div></div>'+
-     '<div class="wx-today-ic">'+wxIcon(isDay?t0.short:(t0.night||t0.short),!isDay)+'</div></div>';
-  function dnRow(night,label,text,pop){
-    return '<div class="wx-dn-row"><span class="wx-dn-ic">'+wxIcon(night?"clear":"sunny",night)+'</span><span class="wx-dn-lbl"><b>'+esc(label)+'</b>'+esc(text)+'</span>'+
-      '<span class="wx-dn-pop'+(pop!=null&&pop>=20?' wet':'')+'">'+(pop!=null?esc(pop)+'%':'\u2013')+'<small>rain</small></span></div>';
-  }
-  h+='<div class="wx-dn">'+(isDay?dnRow(false,"Day",t0.short,t0.dayPop):"")+(t0.night?dnRow(true,"Tonight",t0.night,t0.nightPop):"")+'</div>';
+     '<div class="wx-today-text">'+esc(todayText)+'</div></div>'+
+     '<div class="wx-today-ic">'+wxIcon(isDay?t0.short:(t0.night||t0.short),!isDay)+
+     '<div class="wx-today-pops" aria-label="Chance of rain'+(isDay?', day '+(t0.dayPop==null?"unknown":t0.dayPop+"%"):'')+(t0.night?', tonight '+(t0.nightPop==null?"unknown":t0.nightPop+"%"):'')+'">'+
+     (isDay?tp(false,t0.dayPop,"Day"):'')+(t0.night?tp(true,t0.nightPop,"Tonight"):'')+'</div></div></div>';
   h+='<div class="wx-strip" style="grid-template-columns:repeat('+days.length+',minmax(0,1fr))" role="group" aria-label="'+days.length+'-day forecast">'+days.map(function(x,i){
     function pp(night,v){return '<span class="wx-pp'+(v!=null&&v>=20?' wet':'')+'">'+(night?'<i class="pp-moon"></i>':'<i class="pp-sun"></i>')+(v!=null?esc(v)+'%':'\u2013')+'</span>'}
     return '<button type="button" class="wx-day'+(i===wxSel?' sel':'')+'" data-act="wx-day" data-i="'+i+'" aria-pressed="'+(i===wxSel)+'" aria-label="'+esc(wxDayText(x))+'">'+
