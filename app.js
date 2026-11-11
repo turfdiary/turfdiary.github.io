@@ -50,6 +50,8 @@ function photoPut(id,blob){return photoTx("readwrite",function(st){st.put(blob,i
 function photoGet(id){return photoTx("readonly",function(st){return st.get(id)})}
 function photoDel(id){if(urlCache[id]){URL.revokeObjectURL(urlCache[id]);delete urlCache[id]}return photoTx("readwrite",function(st){st.delete(id)}).catch(function(){})}
 var urlCache={};
+function photoShared(id,exceptId){return state.entries.some(function(e){return e.id!==exceptId&&(e.photos||[]).indexOf(id)>=0})}
+function dropPhoto(id,exceptId){if(!photoShared(id,exceptId))photoDel(id)}
 function photoURL(id){
   if(urlCache[id])return Promise.resolve(urlCache[id]);
   return photoGet(id).then(function(b){if(!b)return "";urlCache[id]=URL.createObjectURL(b);return urlCache[id]}).catch(function(){return ""});
@@ -191,20 +193,40 @@ function updateProductChips(){
   var list=sheetTask?recentProducts(sheetTask).slice(0,6):[];
   box.innerHTML=list.length?'<span class="m">Used before:</span>'+list.map(function(p){return '<button type="button" class="chip small" data-act="pick-product" data-product="'+esc(p)+'">'+esc(p)+'</button>'}).join(""):"";
 }
+var sheetTasks=[],multiVals={};
+function readMulti(){var mf=document.getElementById("multi-fields");if(!mf)return;mf.querySelectorAll("[data-mt]").forEach(function(inp){var k=inp.dataset.mt;multiVals[k]=multiVals[k]||{};multiVals[k][inp.dataset.f]=inp.value})}
+function renderTaskFields(){
+  var sp=document.getElementById("single-prod"),sc=document.getElementById("single-cost"),mf=document.getElementById("multi-fields");if(!mf)return;
+  var wasMulti=!!mf.innerHTML;readMulti();
+  var fp=document.getElementById("f-product"),fc=document.getElementById("f-cost");
+  if(sheetTasks.length>1){
+    if(!wasMulti){var k=sheetTasks[0];if(fp.value||fc.value)multiVals[k]={p:fp.value,c:fc.value}}
+    sp.hidden=true;sc.hidden=true;
+    mf.innerHTML='<div class="field">Product and cost for each task (optional)'+sheetTasks.map(function(t){var v=multiVals[t]||{};
+      return '<div class="mt-row"><div class="mt-name">'+esc(t)+'</div><input type="text" list="prod-list" maxlength="80" autocomplete="off" placeholder="Product" aria-label="Product for '+esc(t)+'" data-mt="'+esc(t)+'" data-f="p" value="'+esc(v.p||"")+'"><input type="number" inputmode="decimal" step="0.01" min="0" placeholder="Cost" aria-label="Cost for '+esc(t)+'" data-mt="'+esc(t)+'" data-f="c" value="'+esc(v.c||"")+'"></div>';
+    }).join("")+'</div>';
+  }else{
+    if(wasMulti&&sheetTasks.length===1){var v=multiVals[sheetTasks[0]];if(v){fp.value=v.p||"";fc.value=v.c||""}}
+    mf.innerHTML="";sp.hidden=false;sc.hidden=false;
+  }
+  var btn=document.querySelector('[data-act="save-log"]');
+  if(btn&&!editId&&sheetMode!=="expense")btn.textContent=sheetTasks.length>1?"Save "+sheetTasks.length+" entries":"Save entry";
+}
 var editId=null,sheetMode="log",formPhotos=[],origPhotos=[],newUploads=[],uploading=0;
 function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp){
   if(soilTemp===undefined||soilTemp==="")soilTemp=null;
   formPhotos=(photos||[]).slice();origPhotos=formPhotos.slice();newUploads=[];uploading=0;
   editId=id||null;sheetMode=mode||"log";var ex=sheetMode==="expense";
-  sheetTask=task||null;
+  sheetTask=task||null;sheetTasks=task?[task]:[];multiVals={};
+  var multiOK=!editId&&!ex;
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">'+
     '<h2 id="sheet-title">'+(editId?"Edit entry":ex?"Add expense":"Log work")+'</h2>'+
-    '<fieldset><legend>'+(ex?"What it was for":"Task")+'</legend><div class="chips">'+TASKS.map(function(t){return '<button type="button" class="chip" data-act="pick-task" data-task="'+esc(t)+'" aria-pressed="'+(t===sheetTask)+'">'+esc(t)+'</button>'}).join("")+'</div></fieldset>'+
-    '<label class="field">'+(ex?"What you bought (optional)":"Product used (optional)")+'<input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"></label>'+
+    '<fieldset><legend>'+(ex?"What it was for":multiOK?"Tasks (pick one or more)":"Task")+'</legend><div class="chips">'+TASKS.map(function(t){return '<button type="button" class="chip" data-act="pick-task" data-task="'+esc(t)+'" aria-pressed="'+(t===sheetTask)+'">'+esc(t)+'</button>'}).join("")+'</div></fieldset>'+
+    '<div id="single-prod"><label class="field">'+(ex?"What you bought (optional)":"Product used (optional)")+'<input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"></label>'+
     '<datalist id="prod-list">'+recentProducts().map(function(p){return '<option value="'+esc(p)+'">'}).join("")+'</datalist>'+
-    '<div class="chips prod-chips" id="prod-chips"></div>'+
+    '<div class="chips prod-chips" id="prod-chips"></div></div><div id="multi-fields"></div>'+
     '<label class="field">Date<input type="date" id="f-date" value="'+esc(date||todayISO())+'"></label>'+
-    '<label class="field">'+(ex?"Amount":"Cost (optional)")+'<input type="number" id="f-cost" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="'+esc(cost||"")+'"></label>'+
+    '<div id="single-cost"><label class="field">'+(ex?"Amount":"Cost (optional)")+'<input type="number" id="f-cost" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="'+esc(cost||"")+'"></label></div>'+
     (ex?'':'<label class="field">Soil temperature, \u00b0F (optional)<input type="number" id="f-soil" inputmode="decimal" step="0.1" min="-20" max="130" placeholder="From your thermometer" value="'+esc(soilTemp==null?"":soilTemp)+'"></label>')+
     '<div id="photo-field"></div>'+
     '<label class="field">Notes (optional)<textarea id="f-note" rows="2" maxlength="300" placeholder="Mower height, weather, how it went\u2026">'+esc(note||"")+'</textarea></label>'+
@@ -265,7 +287,7 @@ function showViewer(i){
 }
 function saveLog(){
   var err=document.getElementById("f-err");
-  if(!sheetTask){err.textContent="Pick a task to save this entry.";return}
+  if(!sheetTasks.length){err.textContent="Pick a task to save this entry.";return}
   var date=document.getElementById("f-date").value||todayISO();
   var raw=document.getElementById("f-cost").value.trim(),cost=0;
   if(raw){cost=parseFloat(raw);if(isNaN(cost)||cost<0){err.textContent="Enter the cost as a number, like 24.99.";return}}
@@ -273,9 +295,21 @@ function saveLog(){
   if(uploading){err.textContent="Wait for your photos to finish adding.";return}
   var sEl=document.getElementById("f-soil"),soilV=null;
   if(sEl&&sEl.value.trim()){soilV=parseFloat(sEl.value);if(isNaN(soilV)||soilV<-20||soilV>130){err.textContent="Enter the soil temperature in \u00b0F, like 54.";return}soilV=Math.round(soilV*10)/10}
+  if(sheetTasks.length>1){
+    readMulti();
+    var recs=[],note=document.getElementById("f-note").value.trim().slice(0,300);
+    for(var mi=0;mi<sheetTasks.length;mi++){
+      var t=sheetTasks[mi],v=multiVals[t]||{},c=0;
+      if(v.c&&String(v.c).trim()){c=parseFloat(v.c);if(isNaN(c)||c<0){err.textContent="Enter the cost for "+t+" as a number, like 24.99.";return}}
+      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV});
+    }
+    newUploads=[];
+    recs.forEach(function(r){state.entries.push(r)});
+    setStatus(recs.length+" tasks logged");closeSheet();persist();return;
+  }
   var rec={date:date,task:sheetTask,cost:Math.round(cost*100)/100,note:document.getElementById("f-note").value.trim().slice(0,300),product:document.getElementById("f-product").value.trim().slice(0,80),photos:formPhotos.slice()};
   if(sheetMode!=="expense")rec.soilTemp=soilV;
-  origPhotos.forEach(function(id){if(formPhotos.indexOf(id)<0)photoDel(id)});
+  origPhotos.forEach(function(id){if(formPhotos.indexOf(id)<0)dropPhoto(id,editId)});
   newUploads=[];
   var ex=editId?state.entries.find(function(x){return x.id===editId}):null;
   if(ex){Object.assign(ex,rec);delete ex.quick}else state.entries.push(Object.assign({id:uid()},rec));
@@ -331,7 +365,14 @@ document.addEventListener("click",function(ev){
   else if(a==="add-expense")openSheet("Supplies","","","","",null,"expense");
   else if(a==="open-log")openSheet(el.dataset.task);
   else if(a==="close-sheet")closeSheet();
-  else if(a==="pick-task"){sheetTask=el.dataset.task;document.querySelectorAll('[data-act="pick-task"]').forEach(function(c){c.setAttribute("aria-pressed",String(c===el))});document.getElementById("f-err").textContent="";updateProductChips()}
+  else if(a==="pick-task"){
+    var tk=el.dataset.task;
+    if(!editId&&sheetMode!=="expense"){var ti=sheetTasks.indexOf(tk);if(ti>=0)sheetTasks.splice(ti,1);else sheetTasks.push(tk)}
+    else sheetTasks=[tk];
+    sheetTask=sheetTasks[0]||null;
+    document.querySelectorAll('[data-act="pick-task"]').forEach(function(c){c.setAttribute("aria-pressed",String(sheetTasks.indexOf(c.dataset.task)>=0))});
+    document.getElementById("f-err").textContent="";updateProductChips();renderTaskFields();
+  }
   else if(a==="pick-product"){var pi=document.getElementById("f-product");if(pi){pi.value=el.dataset.product;pi.focus()}}
   else if(a==="save-log")saveLog();
   else if(a==="done-today"){
@@ -358,8 +399,8 @@ document.addEventListener("click",function(ev){
       var db=document.querySelector('[data-act="confirm-del"]');if(db)db.focus();
     }
   }
-  else if(a==="confirm-del"){var did=el.dataset.id,de=state.entries.find(function(x){return x.id===did});if(de&&de.photos)de.photos.forEach(photoDel);state.entries=state.entries.filter(function(x){return x.id!==did});closeSheet();persist()}
-  else if(a==="undo-today"){var uid2=el.dataset.id,ue=state.entries.find(function(x){return x.id===uid2});if(ue){if(ue.photos)ue.photos.forEach(photoDel);state.entries=state.entries.filter(function(x){return x.id!==uid2});setStatus(ue.task+" removed");persist()}}
+  else if(a==="confirm-del"){var did=el.dataset.id,de=state.entries.find(function(x){return x.id===did});if(de&&de.photos)de.photos.forEach(function(pid){dropPhoto(pid,did)});state.entries=state.entries.filter(function(x){return x.id!==did});closeSheet();persist()}
+  else if(a==="undo-today"){var uid2=el.dataset.id,ue=state.entries.find(function(x){return x.id===uid2});if(ue){if(ue.photos)ue.photos.forEach(function(pid){dropPhoto(pid,uid2)});state.entries=state.entries.filter(function(x){return x.id!==uid2});setStatus(ue.task+" removed");persist()}}
   else if(a==="del-sched"){state.schedules.splice(+el.dataset.i,1);persist()}
   else if(a==="add-sched"){
     var n=parseInt(document.getElementById("new-every").value,10);

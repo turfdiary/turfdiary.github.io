@@ -117,3 +117,9 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .settings-block{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
 .settings-block p{margin:0 0 10px}
 .file-btn{position:relative;overflow:hidden;display:inline-flex;align-items:center}
+
+/* several tasks at once */
+[hidden]{display:none!important}
+.mt-row{display:grid;grid-template-columns:1fr 104px;gap:6px 8px;margin-top:12px;font-weight:400}
+.mt-name{grid-column:1/-1;font-weight:600;color:var(--grass)}
+.mt-row input{width:100%;min-width:0}
