@@ -1,6 +1,6 @@
 /* TurfDiary service worker: keeps the app working offline.
    Change VERSION whenever you upload new app files so phones pick up the update. */
-const VERSION = "turfdiary-v9";
+const VERSION = "turfdiary-v10";
 const FILES = ["./", "./index.html", "./app.js", "./styles.css", "./manifest.webmanifest",
   "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"];
 
