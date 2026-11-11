@@ -182,3 +182,35 @@ legend{font-weight:600;margin-bottom:8px;padding:0}
 .wx-pp.wet{color:var(--rain);font-weight:800}
 .pp-sun,.pp-moon{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--sun)}
 .pp-moon{background:transparent;box-shadow:inset -2.5px 0 0 0 var(--moon);transform:rotate(-20deg)}
+
+/* today emphasis */
+.wx-today{display:block;margin-top:12px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:12px 14px 14px;box-shadow:inset 4px 0 0 var(--grass)}
+.wx-today-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.wx-today-tag{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--grass)}
+.wx-today-date{font-size:14px;color:var(--muted)}
+.wx-today-body{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px}
+.wx-now{display:flex;align-items:center;gap:10px}
+.wx-now-t{font-size:52px;font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.wx-now-l{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;line-height:1.25}
+.wx-now-l span{text-transform:none;letter-spacing:0;font-weight:500;font-size:14px}
+.wx-hl{display:flex;gap:14px;margin-top:8px;font-size:14px;color:var(--muted);white-space:nowrap}
+.wx-hl b{color:var(--ink);font-size:16px}
+.wx-today-text{color:var(--muted);font-size:14px;margin-top:6px}
+.wx-next{margin-top:16px;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.wx-next+.wx-strip{margin-top:6px}
+
+.wx-outlook{margin-top:8px;display:grid;gap:3px;font-size:14px;color:var(--muted)}
+.wx-outlook div{display:flex;align-items:center;gap:6px}
+.wx-outlook b{color:var(--ink);font-weight:700;min-width:3.9em}
+.wx-outlook .pp-sun,.wx-outlook .pp-moon{width:9px;height:9px;flex:none}
+.wx-outlook .pp-moon{box-shadow:inset -3px 0 0 0 var(--moon)}
+
+/* condensed weather */
+.wx-today{cursor:pointer;padding:10px 12px 12px}
+.wx-today.sel{border-color:var(--grass)}
+.wx-now-t{font-size:46px}
+.wx-today-ic .wx-ic{width:58px;height:58px}
+.wx-hl{margin-top:4px}
+.wx-next{margin-top:12px}
+.wx-strip .wx-ic{width:30px;height:30px}
+.wx-day{padding:7px 0}

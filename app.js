@@ -76,11 +76,11 @@ function loadWx(force){
   if(!loc||wxLoading)return;
   if(!force&&wx&&wx.key===wxKey()&&Date.now()-wx.fetchedAt<1800000)return;
   wxLoading=true;wxErr="";refreshWxCard();
-  var step=loc.forecastUrl?Promise.resolve(loc):nwsJSON("https://api.weather.gov/points/"+loc.lat+","+loc.lon).then(function(j){
+  var step=loc.forecastUrl&&loc.hourlyUrl!==undefined?Promise.resolve(loc):nwsJSON("https://api.weather.gov/points/"+loc.lat+","+loc.lon).then(function(j){
     var pr=j.properties||{};
     if(!pr.forecast)throw{code:"notfound"};
     var rl=pr.relativeLocation&&pr.relativeLocation.properties;
-    loc.forecastUrl=pr.forecast;loc.place=rl&&rl.city?rl.city+", "+rl.state:"Your area";saveQuiet();
+    loc.forecastUrl=pr.forecast;loc.hourlyUrl=pr.forecastHourly||"";loc.stationsUrl=pr.observationStations||"";loc.place=rl&&rl.city?rl.city+", "+rl.state:"Your area";saveQuiet();
     return loc;
   }).catch(function(e){throw{code:e&&e.code==="notfound"?"outside":"http"}});
   step.then(function(l){
@@ -92,12 +92,28 @@ function loadWx(force){
       return{name:p.name,start:p.startTime||"",day:!!p.isDaytime,temp:p.temperature,unit:p.temperatureUnit||"F",pop:p.probabilityOfPrecipitation?p.probabilityOfPrecipitation.value:null,short:p.shortForecast||"",wind:p.windSpeed||""};
     })};
     try{localStorage.setItem(LS_WX,JSON.stringify(wx))}catch(e){}
+    return loadNow(loc).then(function(nw){if(nw){wx.now=nw;try{localStorage.setItem(LS_WX,JSON.stringify(wx))}catch(e){}}});
   }).catch(function(e){
     wxErr=e&&e.code==="outside"?"Weather is only available for locations in the United States.":"Couldn\u2019t load the forecast right now. The weather service may be busy, so try again in a few minutes.";
   }).then(function(){wxLoading=false;refreshWxCard()});
 }
+function loadNow(loc){
+  /* current temperature: latest reading from the nearest NWS station, or this hour's forecast if that reading is missing or old */
+  function fromHourly(){
+    if(!loc.hourlyUrl)return Promise.resolve(null);
+    return nwsJSON(loc.hourlyUrl).then(function(j){var p=j.properties&&j.properties.periods&&j.properties.periods[0];return p?{temp:p.temperature,text:p.shortForecast||"",src:"hourly"}:null}).catch(function(){return null});
+  }
+  if(!loc.stationsUrl)return fromHourly();
+  var st=loc.stationUrl?Promise.resolve(loc.stationUrl):nwsJSON(loc.stationsUrl).then(function(j){var f=j.features&&j.features[0];if(!f)throw{};loc.stationUrl=f.id;saveQuiet();return f.id});
+  return st.then(function(u){return nwsJSON(u+"/observations/latest")}).then(function(j){
+    var pr=j.properties||{},c=pr.temperature&&pr.temperature.value,ts=Date.parse(pr.timestamp||"");
+    if(c==null||isNaN(ts)||Date.now()-ts>2*3600000)return fromHourly();
+    return{temp:Math.round(c*9/5+32),text:pr.textDescription||"",src:"obs"};
+  }).catch(fromHourly);
+}
 function wxNowText(){
   if(!wx||wx.key!==wxKey()||!wx.periods.length)return "";
+  if(wx.now&&wx.now.temp!=null)return (wx.now.text?wx.now.text+", ":"")+wx.now.temp+"\u00b0F";
   var p=wx.periods[0];return p.short+", "+p.temp+"\u00b0"+p.unit;
 }
 function wxTips(ps){
@@ -110,7 +126,7 @@ function wxTips(ps){
   if(hot)tips.push(["Hot day: "+hot.name+", "+hot.temp+"\u00b0F","Mow early or late in the day, and raise the mower height a notch."]);
   return tips;
 }
-var wxSel=0;
+var wxSel=-1;
 function wxDays(periods){
   var days=[];
   periods.forEach(function(p,i){
@@ -180,15 +196,23 @@ function wxCardHTML(){
     return h+'<p class="m" style="margin-top:10px">Loading the forecast\u2026</p></section>';
   }
   var all=wxDays(d.periods),t0=all[0],days=all.slice(1);
-  if(wxSel>=days.length)wxSel=0;
+  if(wxSel>=days.length)wxSel=-1;
   var isDay=t0.high!=null;
   function tp(night,v,label){return '<span class="wx-pp big'+(v!=null&&v>=20?' wet':'')+'" title="'+label+' rain chance">'+(night?'<i class="pp-moon"></i>':'<i class="pp-sun"></i>')+(v!=null?esc(v)+'%':'\u2013')+'</span>'}
-  var todayText=isDay?t0.short+(t0.night?'. Tonight: '+t0.night.toLowerCase()+', low '+t0.low+'\u00b0':t0.low!=null?'. Low tonight '+t0.low+'\u00b0':''):(t0.night||t0.short);
-  h+='<div class="wx-today"><div class="wx-today-main"><div class="soil-now">'+esc(isDay?t0.high:t0.low)+'\u00b0<small>'+(isDay?"High today":"Low tonight")+'</small></div>'+
-     '<div class="wx-today-text">'+esc(todayText)+'</div></div>'+
+  var now=d.now&&d.now.temp!=null?d.now:null;
+  var bigT=now?now.temp:(isDay?t0.high:t0.low);
+  var cond=now&&now.text?now.text:(isDay?t0.short:(t0.night||t0.short));
+  var dateTxt=new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+  var hl=(isDay&&t0.high!=null?'<span>High <b>'+esc(t0.high)+'\u00b0</b></span>':'')+(t0.low!=null?'<span>Low <b>'+esc(t0.low)+'\u00b0</b></span>':'');
+  h+='<div class="wx-today'+(wxSel<0?' sel':'')+'" data-act="wx-day" data-i="-1" role="button" tabindex="0" aria-pressed="'+(wxSel<0)+'" aria-label="Today\u2019s forecast"><div class="wx-today-head"><span class="wx-today-tag">Today</span><span class="wx-today-date">'+esc(dateTxt)+'</span></div>'+
+     '<div class="wx-today-body"><div class="wx-today-main">'+
+     '<div class="wx-now"><span class="wx-now-t">'+esc(bigT)+'\u00b0</span><span class="wx-now-l">'+(now?"Now":(isDay?"High":"Low"))+'<br><span>'+esc(cond)+'</span></span></div>'+
+     (hl?'<div class="wx-hl">'+hl+'</div>':'')+
+     '</div>'+
      '<div class="wx-today-ic">'+wxIcon(isDay?t0.short:(t0.night||t0.short),!isDay)+
      '<div class="wx-today-pops" aria-label="Chance of rain'+(isDay?', day '+(t0.dayPop==null?"unknown":t0.dayPop+"%"):'')+(t0.night?', tonight '+(t0.nightPop==null?"unknown":t0.nightPop+"%"):'')+'">'+
-     (isDay?tp(false,t0.dayPop,"Day"):'')+(t0.night?tp(true,t0.nightPop,"Tonight"):'')+'</div></div></div>';
+     (isDay?tp(false,t0.dayPop,"Day"):'')+(t0.night?tp(true,t0.nightPop,"Tonight"):'')+'</div></div></div></div>';
+  h+='<div class="wx-next">Next '+days.length+' days</div>';
   h+='<div class="wx-strip" style="grid-template-columns:repeat('+days.length+',minmax(0,1fr))" role="group" aria-label="'+days.length+'-day forecast">'+days.map(function(x,i){
     function pp(night,v){return '<span class="wx-pp'+(v!=null&&v>=20?' wet':'')+'">'+(night?'<i class="pp-moon"></i>':'<i class="pp-sun"></i>')+(v!=null?esc(v)+'%':'\u2013')+'</span>'}
     return '<button type="button" class="wx-day'+(i===wxSel?' sel':'')+'" data-act="wx-day" data-i="'+i+'" aria-pressed="'+(i===wxSel)+'" aria-label="'+esc(wxDayText(x))+'">'+
@@ -197,7 +221,7 @@ function wxCardHTML(){
       '<span class="wx-lo">'+(x.low!=null?esc(x.low)+'\u00b0':'')+'</span>'+
       '<span class="wx-pps">'+pp(false,x.dayPop)+pp(true,x.nightPop)+'</span></button>';
   }).join("")+'</div>';
-  h+='<p class="wx-detail" id="wx-detail" aria-live="polite">'+esc(wxDayText(days[wxSel]))+'</p>';
+  h+='<p class="wx-detail" id="wx-detail" aria-live="polite">'+esc(wxDayText(wxSel<0?t0:days[wxSel]))+'</p>';
   var tips=wxTips(d.periods);
   if(tips.length)h+='<ul class="soil-tips">'+tips.map(function(t){return '<li><b>'+esc(t[0])+'</b>'+esc(t[1])+'</li>'}).join("")+'</ul>';
   h+='<p class="src">'+(wxLoading?"Updating\u2026 ":"")+'Source: U.S. National Weather Service. Updated '+esc(new Date(d.fetchedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}))+'. Forecasts can change.</p>';
@@ -576,10 +600,11 @@ document.addEventListener("click",function(ev){
   else if(a==="export")exportBackup();
   else if(a==="wx-gps")wxUseGPS();
   else if(a==="wx-retry")loadWx(true);
-  else if(a==="wx-day"){wxSel=+el.dataset.i;document.querySelectorAll(".wx-day").forEach(function(b,i){b.classList.toggle("sel",i===wxSel);b.setAttribute("aria-pressed",String(i===wxSel))});var dd=document.getElementById("wx-detail");if(dd&&wx)dd.textContent=wxDayText(wxBarDays(wx.periods)[wxSel])}
+  else if(a==="wx-day"){wxSel=+el.dataset.i;document.querySelectorAll(".wx-day").forEach(function(b,i){b.classList.toggle("sel",i===wxSel);b.setAttribute("aria-pressed",String(i===wxSel))});var tp=document.querySelector(".wx-today");if(tp){tp.classList.toggle("sel",wxSel<0);tp.setAttribute("aria-pressed",String(wxSel<0))}var dd=document.getElementById("wx-detail");if(dd&&wx)dd.textContent=wxDayText(wxDays(wx.periods)[wxSel+1])}
   else if(a==="wx-remove"){state.wxLoc=null;wx=null;wxErr="";try{localStorage.removeItem(LS_WX)}catch(e){}persist()}
   else if(a==="confirm-import")confirmImport();
 });
+document.addEventListener("keydown",function(ev){if((ev.key==="Enter"||ev.key===" ")&&ev.target.classList&&ev.target.classList.contains("wx-today")){ev.preventDefault();ev.target.click()}});
 document.addEventListener("change",function(ev){
   var el=ev.target,a=el.dataset&&el.dataset.act;
   if(a==="add-photo"){addPhotos(el.files);el.value="";return}
