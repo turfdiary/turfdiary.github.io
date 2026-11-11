@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TurfDiary</title>
+<meta name="description" content="Your lawn’s diary: track yard work, products, costs, reminders and progress photos.">
+<meta name="theme-color" content="#2E6A39">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="root"></div>
+<div id="sheet"></div>
+<noscript><p style="padding:16px">TurfDiary needs JavaScript turned on.</p></noscript>
+<script src="app.js"></script>
+<script>
+if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
+</script>
+</body>
+</html>
