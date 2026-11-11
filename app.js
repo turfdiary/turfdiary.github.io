@@ -1,6 +1,6 @@
 (function(){
 "use strict";
-var TASKS=["Mow","Edge","Trim","Fertilize","Weed control","Water","Aerate","Overseed","Leaves","Supplies","Other"];
+var TASKS=["Mow","Edge","Trim","Fertilize","Weed control","Fungicide","Insecticide","Water","Aerate","Overseed","Leaves","Supplies","Other"];
 var LS="lawnlog-state",LS_TAB="lawnlog-tab";
 var DEFAULT_STATE={v:1,updatedAt:0,entries:[],schedules:[{task:"Mow",every:7},{task:"Edge",every:14},{task:"Water",every:14}]};
 
@@ -9,7 +9,7 @@ try{state=JSON.parse(localStorage.getItem(LS)||"null")}catch(e){state=null}
 if(!state||!Array.isArray(state.entries))state=JSON.parse(JSON.stringify(DEFAULT_STATE));
 if(!Array.isArray(state.schedules))state.schedules=[];
 var tab="home";try{tab=localStorage.getItem(LS_TAB)||"home"}catch(e){}
-if(["home","history","spend","remind","settings"].indexOf(tab)<0)tab="home";
+if(tab==="remind")tab="settings";if(["home","history","products","spend","settings"].indexOf(tab)<0)tab="home";
 var histFilter="all",spendYear=new Date().getFullYear(),statusText="",sheetTask=null;
 
 /* ---------- helpers ---------- */
@@ -33,6 +33,7 @@ function persist(){
   state.updatedAt=Date.now();
   try{localStorage.setItem(LS,JSON.stringify(state))}catch(e){setStatus("Couldn\u2019t save. Your phone may be out of storage.")}
   render();
+  scheduleNotifications();
 }
 
 /* ---------- photos (stored on this device) ---------- */
@@ -212,9 +213,9 @@ function wxCardHTML(){
      '<div class="wx-today-ic">'+wxIcon(isDay?t0.short:(t0.night||t0.short),!isDay)+
      '<div class="wx-today-pops" aria-label="Chance of rain'+(isDay?', day '+(t0.dayPop==null?"unknown":t0.dayPop+"%"):'')+(t0.night?', tonight '+(t0.nightPop==null?"unknown":t0.nightPop+"%"):'')+'">'+
      (isDay?tp(false,t0.dayPop,"Day"):'')+(t0.night?tp(true,t0.nightPop,"Tonight"):'')+'</div></div></div></div>';
-  h+='<div class="wx-next">Next '+days.length+' days</div>';
+  h+='<div class="wx-next"><span>Next '+days.length+' days</span><span class="wx-key">Rain: <i class="sw d"></i>day <i class="sw n"></i>night</span></div>';
   h+='<div class="wx-strip" style="grid-template-columns:repeat('+days.length+',minmax(0,1fr))" role="group" aria-label="'+days.length+'-day forecast">'+days.map(function(x,i){
-    function pp(night,v){return '<span class="wx-pp'+(v!=null&&v>=20?' wet':'')+'">'+(night?'<i class="pp-moon"></i>':'<i class="pp-sun"></i>')+(v!=null?esc(v)+'%':'\u2013')+'</span>'}
+    function pp(night,v){return '<span class="wx-pp '+(night?'n':'d')+(v!=null&&v>=20?' wet':'')+'" title="'+(night?'Night':'Day')+' rain chance">'+(v!=null?esc(v)+'<small>%</small>':'\u2013')+'</span>'}
     return '<button type="button" class="wx-day'+(i===wxSel?' sel':'')+'" data-act="wx-day" data-i="'+i+'" aria-pressed="'+(i===wxSel)+'" aria-label="'+esc(wxDayText(x))+'">'+
       '<span class="wx-dname">'+esc(x.label)+'</span>'+wxIcon(wxIconText(x),x.high==null)+
       '<span class="wx-hi">'+(x.high!=null?esc(x.high)+'\u00b0':'\u2013')+'</span>'+
@@ -246,6 +247,322 @@ function wxUseGPS(){
   },function(){
     setStatus("");wxErr="Location wasn\u2019t shared. Allow location for TurfDiary in your phone\u2019s settings, then try again.";render();
   },{enableHighAccuracy:false,timeout:15000,maximumAge:600000});
+}
+
+/* ---------- lawn size (traced on USGS aerial imagery) and saved products ---------- */
+function ensureData(){if(!state.lawn||!Array.isArray(state.lawn.areas))state.lawn={areas:[],manual:null};if(!Array.isArray(state.products))state.products=[]}
+ensureData();
+function lawnSqft(){var l=state.lawn||{};if(l.manual>0)return l.manual;return (l.areas||[]).reduce(function(t,a){return t+(a.sqft||0)},0)}
+function fmtInt(n){return Math.round(n).toLocaleString()}
+function fmtAmt(n){return n>=100?fmtInt(n):(Math.round(n*10)/10).toLocaleString()}
+function pkgWord(p,n){var liquid=/fl oz|gal|qt/.test(p.unit||"");return liquid?(n===1?"container":"containers"):(n===1?"bag":"bags")}
+function prodSummary(p){
+  var t=p.mode==="cover"?"1 "+pkgWord(p,1)+" covers "+fmtInt(p.cover)+" sq ft":(Math.round(p.rate*100)/100).toLocaleString()+" "+p.unit+" per 1,000 sq ft";
+  if(p.pkgSize)t+=", "+fmtAmt(p.pkgSize)+" "+p.unit+" "+pkgWord(p,1);
+  if(p.price!=null)t+=", "+money(p.price)+" a "+pkgWord(p,1);
+  return t;
+}
+function prodCostUsed(p,sq){
+  if(p.price==null||!(sq>0))return null;
+  if(p.mode==="cover"&&p.cover>0)return Math.round(sq/p.cover*p.price*100)/100;
+  if(p.rate>0&&p.pkgSize>0)return Math.round(p.rate*sq/1000/p.pkgSize*p.price*100)/100;
+  return null;
+}
+function costButtons(p,target){
+  if(!p||p.price==null)return "";
+  var used=prodCostUsed(p,lawnSqft()),h='<span class="cost-btns">Cost: ';
+  if(used!=null)h+='<button type="button" class="chip small" data-act="use-cost" data-v="'+used+'" data-t="'+esc(target)+'">'+money(used)+' used on your lawn</button>';
+  h+='<button type="button" class="chip small" data-act="use-cost" data-v="'+p.price+'" data-t="'+esc(target)+'">'+money(p.price)+' whole '+pkgWord(p,1)+'</button></span>';
+  return h;
+}
+function prodCalc(p,sq){
+  if(!p)return "";
+  if(!(sq>0))return "Measure your lawn in Settings to see how much you need.";
+  var t="For your "+fmtInt(sq)+" sq ft: ";
+  if(p.mode==="cover"&&p.cover>0){
+    var b=sq/p.cover;t+=fmtAmt(b)+" "+pkgWord(p,b)+" (buy "+Math.ceil(b-0.02)+")";
+    if(p.pkgSize)t+=", about "+fmtAmt(b*p.pkgSize)+" "+p.unit;
+  }else if(p.rate>0){
+    var amt=p.rate*sq/1000;t+=fmtAmt(amt)+" "+p.unit;
+    if(p.pkgSize){var n=amt/p.pkgSize;t+=", "+fmtAmt(n)+" "+pkgWord(p,n)+" (buy "+Math.ceil(n-0.02)+")"}
+  }else return "";
+  if(p.spreader)t+=". Spreader setting: "+p.spreader;
+  return t+".";
+}
+function findProduct(name){name=(name||"").trim().toLowerCase();if(!name)return null;return state.products.find(function(p){return p.name.trim().toLowerCase()===name})||null}
+function calcHTML(name,target){
+  var n=(name||"").trim();if(!n)return "";
+  var p=findProduct(n);
+  if(p)return '<span class="calc-ok">'+esc(prodCalc(p,lawnSqft()))+'</span> <button type="button" class="link small" data-act="prod-edit" data-id="'+esc(p.id)+'">Edit product</button>'+costButtons(p,target||"f");
+  return '<button type="button" class="link small" data-act="prod-new" data-name="'+esc(n)+'">Save this product\u2019s rate</button> <span class="m">to calculate how much you need.</span>';
+}
+function updateCalc(input){
+  var box=input.id==="f-product"?document.getElementById("prod-calc"):input.parentNode.querySelector(".mt-calc");
+  if(box)box.innerHTML=calcHTML(input.value,input.id==="f-product"?"f":input.dataset.mt);
+}
+function refreshAllCalcs(){var f=document.getElementById("f-product");if(f)updateCalc(f);document.querySelectorAll('[data-mt][data-f="p"]').forEach(updateCalc)}
+
+/* product editor (opens above other sheets) */
+var prodEditId=null,prodMode="cover";
+function sheet2(){var d=document.getElementById("sheet2");if(!d){d=document.createElement("div");d.id="sheet2";document.body.appendChild(d)}return d}
+function closeSheet2(){sheet2().innerHTML=""}
+var upcPrefill="";
+function openProduct(id,name,upc){
+  upcPrefill=upc||"";
+  var p=id?state.products.find(function(x){return x.id===id}):null;
+  prodEditId=p?p.id:null;prodMode=p?p.mode:"cover";
+  var unitSel=function(v){return ["lb","oz","fl oz","gal"].map(function(u){return '<option'+(u===(v||"lb")?' selected':'')+'>'+u+'</option>'}).join("")};
+  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="p-title"><h2 id="p-title">'+(p?"Edit product":"Save a product")+'</h2>'+
+    '<label class="field">Product name<input type="text" id="p-name" maxlength="80" value="'+esc(p?p.name:(name||""))+'" placeholder="e.g. LESCO Dimension 19-0-7"></label>'+
+    '<fieldset><legend>How does the label list it?</legend><div class="chips"><button type="button" class="chip" data-act="prod-mode" data-mode="cover" aria-pressed="'+(prodMode==="cover")+'">One bag covers an area</button><button type="button" class="chip" data-act="prod-mode" data-mode="rate" aria-pressed="'+(prodMode==="rate")+'">Amount per 1,000 sq ft</button></div></fieldset>'+
+    '<div id="p-cover"'+(prodMode==="cover"?'':' hidden')+'><label class="field">One bag or container covers (sq ft)<input type="number" id="p-cover-n" inputmode="numeric" min="1" value="'+esc(p&&p.cover||"")+'" placeholder="e.g. 5000"></label></div>'+
+    '<div id="p-rate"'+(prodMode==="rate"?'':' hidden')+'><label class="field">Apply this much per 1,000 sq ft<div class="unit-row"><input type="number" id="p-rate-n" inputmode="decimal" step="0.01" min="0" value="'+esc(p&&p.rate||"")+'" placeholder="e.g. 3.85"><select id="p-unit" aria-label="Unit">'+unitSel(p&&p.unit)+'</select></div></label></div>'+
+    '<label class="field">Bag or container size (optional)<div class="unit-row"><input type="number" id="p-pkg" inputmode="decimal" step="0.01" min="0" value="'+esc(p&&p.pkgSize||"")+'" placeholder="e.g. 50"><select id="p-unit2" aria-label="Unit">'+unitSel(p&&p.unit)+'</select></div></label>'+
+    '<label class="field">Price per bag or container (optional)<div class="unit-row"><span class="dollar">$</span><input type="number" id="p-price" inputmode="decimal" step="0.01" min="0" value="'+esc(p&&p.price!=null?p.price:"")+'" placeholder="e.g. 57.94"></div></label>'+
+    '<label class="field">Barcode (UPC, optional)<div class="unit-row"><input type="text" id="p-upc" inputmode="numeric" maxlength="24" value="'+esc(p&&p.upc||upcPrefill||"")+'" placeholder="Scan or type the number under the barcode"><button type="button" class="btn small" data-act="scan-into-product">Scan</button></div></label>'+
+    '<label class="field">Spreader setting (optional)<input type="text" id="p-spread" maxlength="40" value="'+esc(p&&p.spreader||"")+'" placeholder="e.g. 3.5 on my rotary spreader"></label>'+
+    '<p class="err" id="p-err" role="alert"></p><div class="actions">'+(p?'<button class="btn ghost" data-act="prod-del" style="margin-right:auto">Delete</button>':'')+'<button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="prod-save">Save product</button></div></div>';
+  var f=document.getElementById("p-name");if(f&&!f.value)f.focus();
+}
+function saveProduct(){
+  var err=document.getElementById("p-err"),name=document.getElementById("p-name").value.trim();
+  if(!name){err.textContent="Give the product a name.";return}
+  var unit=prodMode==="rate"?document.getElementById("p-unit").value:document.getElementById("p-unit2").value;
+  var rec={name:name.slice(0,80),mode:prodMode,unit:unit,spreader:document.getElementById("p-spread").value.trim().slice(0,40)};
+  var pkg=parseFloat(document.getElementById("p-pkg").value);rec.pkgSize=pkg>0?pkg:null;
+  if(prodMode==="cover"){var cv=parseFloat(document.getElementById("p-cover-n").value);if(!(cv>0)){err.textContent="Enter how many square feet one bag covers, like 5000.";return}rec.cover=cv;rec.rate=null}
+  else{var r=parseFloat(document.getElementById("p-rate-n").value);if(!(r>0)){err.textContent="Enter the amount per 1,000 sq ft, like 3.85.";return}rec.rate=r;rec.cover=null}
+  var dup=findProduct(name);if(dup&&dup.id!==prodEditId){err.textContent="You already have a product with that name.";return}
+  var upc=normUpc(document.getElementById("p-upc").value);
+  if(document.getElementById("p-upc").value.trim()&&!upc){err.textContent="The barcode should be 6 to 14 digits.";return}
+  var du=upc?findByUpc(upc):null;if(du&&du.id!==prodEditId){err.textContent="That barcode is already saved for "+du.name+".";return}
+  rec.upc=upc||null;
+  var pr=parseFloat(document.getElementById("p-price").value);
+  if(document.getElementById("p-price").value.trim()&&!(pr>=0)){err.textContent="Enter the price as a number, like 57.94.";return}
+  rec.price=pr>=0?Math.round(pr*100)/100:null;
+  var ex=prodEditId?state.products.find(function(x){return x.id===prodEditId}):null;
+  if(ex)Object.assign(ex,rec);else state.products.push(Object.assign({id:"pr_"+uid()},rec));
+  state.updatedAt=Date.now();saveQuiet();closeSheet2();
+  if(document.getElementById("f-product")||document.querySelector("[data-mt]")){refreshAllCalcs();var dl=document.getElementById("prod-list");if(dl)dl.innerHTML=productNames().map(function(n){return '<option value="'+esc(n)+'">'}).join("")}
+  else render();
+}
+function productNames(){var out=state.products.map(function(p){return p.name});recentProducts().forEach(function(n){if(!findProduct(n))out.push(n)});return out}
+function lawnHTML(){
+  var l=state.lawn,sq=lawnSqft(),h='<div class="settings-block" id="lawn-block">';
+  if(sq>0)h+='<p class="lawn-total">'+fmtInt(sq)+' <span>sq ft of lawn'+(l.manual>0?' (entered by hand)':'')+'</span></p>';
+  else h+='<p>Trace your lawn on an aerial photo to get its size. TurfDiary then works out how much product you need.</p>';
+  if(!(l.manual>0)&&l.areas.length)h+='<div class="list" style="margin-bottom:10px">'+l.areas.map(function(a,i){return '<div class="item"><div class="grow"><div class="t">'+esc(a.name)+'</div><div class="m">'+fmtInt(a.sqft)+' sq ft</div></div><button class="btn small ghost" data-act="lawn-del" data-i="'+i+'">Remove</button></div>'}).join("")+'</div>';
+  h+='<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="lawn-map">'+(l.areas.length?"Edit on map":"Measure on map")+'</button><button class="btn" data-act="lawn-manual">Enter size by hand</button></div>';
+  h+='<p class="src">Aerial imagery: USGS The National Map and USDA NAIP (public domain). Photos may be a year or two old, and trees can hide parts of the lawn, so treat the size as an estimate.</p></div>';
+  return h;
+}
+function productsHTML(){
+  var sq=lawnSqft(),h='<div class="settings-block">';
+  if(!state.products.length)h+='<p>Save each product\u2019s rate once, from its label. When you log work with that product, TurfDiary shows how much you need for your lawn.</p>';
+  else h+='<div class="list">'+state.products.map(function(p){return '<div class="item"><div class="grow"><div class="t">'+esc(p.name)+'</div><div class="m">'+esc(prodSummary(p))+'</div><div class="calc-ok small">'+esc(prodCalc(p,sq))+'</div>'+(p.upc?'<div class="m small">Barcode '+esc(p.upc)+'</div>':'')+'</div><div class="row-acts"><button class="btn small" data-act="prod-edit" data-id="'+esc(p.id)+'" aria-label="Edit '+esc(p.name)+'">Edit</button><button class="btn small ghost" data-act="prod-del-ask" data-id="'+esc(p.id)+'" aria-label="Delete '+esc(p.name)+'">Delete</button></div></div>'}).join("")+'</div>';
+  return h+'</div>';
+}
+function openManualLawn(){
+  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ml-title"><h2 id="ml-title">Lawn size</h2>'+
+    '<label class="field">Square feet of lawn<input type="number" id="ml-n" inputmode="numeric" min="0" value="'+esc(state.lawn.manual||"")+'" placeholder="e.g. 6500"></label>'+
+    '<p class="note">Leave it empty to use the size you traced on the map instead.</p><div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="ml-save">Save</button></div></div>';
+  document.getElementById("ml-n").focus();
+}
+
+/* the tracing map: one aerial image per view, fetched from the USGS NAIP Plus image service */
+var R_EARTH=6378137,MAP=null;
+function toMerc(lat,lng){return[R_EARTH*lng*Math.PI/180,R_EARTH*Math.log(Math.tan(Math.PI/4+lat*Math.PI/360))]}
+function fromMerc(x,y){return[(2*Math.atan(Math.exp(y/R_EARTH))-Math.PI/2)*180/Math.PI,x/R_EARTH*180/Math.PI]}
+function usgsImage(b,w,h){return "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer/exportImage?bbox="+b.join(",")+"&bboxSR=3857&imageSR=3857&size="+w+","+h+"&format=jpg&f=image"}
+function polyAreaSqft(pts){
+  if(pts.length<3)return 0;
+  var lat0=pts.reduce(function(t,p){return t+p[0]},0)/pts.length,k=Math.cos(lat0*Math.PI/180),a=0,m=pts.map(function(p){return toMerc(p[0],p[1])});
+  for(var i=0;i<m.length;i++){var j=(i+1)%m.length;a+=m[i][0]*m[j][1]-m[j][0]*m[i][1]}
+  return Math.abs(a)/2*k*k*10.7639;
+}
+function openMap(){
+  var el=document.createElement("div");el.id="mapview";el.setAttribute("role","dialog");el.setAttribute("aria-label","Measure your lawn");
+  el.innerHTML='<div class="map-top"><button class="btn small" data-act="map-close">Cancel</button><div class="map-read" id="map-read" aria-live="polite">Finding your location\u2026</div><button class="btn small primary" data-act="map-save">Save</button></div>'+
+    '<div class="map-box" id="map-box"><div class="map-imgs" id="map-imgs"></div><svg class="map-svg" id="map-svg"></svg>'+
+    '<div class="map-zoom"><button class="btn small" data-act="map-zin" aria-label="Zoom in">+</button><button class="btn small" data-act="map-zout" aria-label="Zoom out">\u2212</button><button class="btn small" data-act="map-me" aria-label="Center on my location">\u25CE</button></div>'+
+    '<div class="map-hint" id="map-hint">Outline one section of lawn at a time. Tap its corners, then tap Add section. TurfDiary adds the sections together.</div></div>'+
+    '<div class="map-sections" id="map-sections"></div>'+
+    '<div class="map-bottom"><button class="btn small" data-act="map-undo">Undo point</button><button class="btn small" data-act="map-clear">Clear</button><button class="btn small primary" data-act="map-finish">+ Add section</button></div>'+
+    '<p class="map-src">Imagery: USGS The National Map / USDA NAIP</p>';
+  document.body.appendChild(el);document.body.style.overflow="hidden";
+  var box=document.getElementById("map-box");
+  MAP={el:el,box:box,cx:0,cy:0,res:0.2,w:box.clientWidth,h:box.clientHeight,imgs:[],pts:[],done:(state.lawn.areas||[]).map(function(a){return{name:a.name,sqft:a.sqft,pts:a.pts||[]}}).filter(function(a){return a.pts.length>2}),ptrs:{},timer:null,moved:false};
+  if(MAP.done.length){var a0=MAP.done[0].pts,c0=a0.reduce(function(t,p){return[t[0]+p[0]/a0.length,t[1]+p[1]/a0.length]},[0,0]);setTimeout(function(){if(MAP)setMapCenter(c0[0],c0[1],0.18)},0)}
+  var start=state.wxLoc?[state.wxLoc.lat,state.wxLoc.lon]:[39.5,-98.35];
+  setMapCenter(start[0],start[1],state.wxLoc?1.2:400);
+  if(!MAP.done.length)mapLocate(true);else mapRead();
+  bindMap(box);
+  window.addEventListener("resize",mapResize);
+}
+function setMapCenter(lat,lng,res){var m=toMerc(lat,lng);MAP.cx=m[0];MAP.cy=m[1];if(res)MAP.res=res;mapDraw();mapLoad()}
+function mapLocate(quiet){
+  if(!navigator.geolocation){mapRead();return}
+  navigator.geolocation.getCurrentPosition(function(p){if(MAP){setMapCenter(p.coords.latitude,p.coords.longitude,0.18);mapRead()}},function(){if(MAP){if(!quiet)document.getElementById("map-hint").textContent="Location wasn\u2019t shared. Drag the map to your yard.";mapRead()}},{enableHighAccuracy:true,timeout:15000,maximumAge:60000});
+}
+function mapResize(){if(!MAP)return;MAP.w=MAP.box.clientWidth;MAP.h=MAP.box.clientHeight;mapDraw();mapLoad()}
+function scr(x,y){return[(x-MAP.cx)/MAP.res+MAP.w/2,(MAP.cy-y)/MAP.res+MAP.h/2]}
+function unscr(px,py){return[MAP.cx+(px-MAP.w/2)*MAP.res,MAP.cy-(py-MAP.h/2)*MAP.res]}
+function mapLoad(){
+  clearTimeout(MAP.timer);
+  MAP.timer=setTimeout(function(){
+    if(!MAP)return;
+    var w=MAP.w,h=MAP.h,dpr=Math.min(window.devicePixelRatio||1,2),k=Math.min(dpr,1400/Math.max(w,h));
+    var b=[MAP.cx-w/2*MAP.res,MAP.cy-h/2*MAP.res,MAP.cx+w/2*MAP.res,MAP.cy+h/2*MAP.res];
+    var img=new Image();img.alt="";img.className="map-img";img.draggable=false;
+    img.onload=function(){if(!MAP)return;MAP.imgs.push({img:img,b:b});document.getElementById("map-imgs").appendChild(img);while(MAP.imgs.length>3){var o=MAP.imgs.shift();o.img.remove()}mapDraw()};
+    img.onerror=function(){var hint=document.getElementById("map-hint");if(hint)hint.textContent="Couldn\u2019t load the aerial photo. Check your connection, or enter your lawn size by hand."};
+    var W=Math.round(w*k),H=Math.round(h*k);
+    img.src=window.__TD_IMAGERY?window.__TD_IMAGERY(b,W,H):usgsImage(b,W,H);
+  },250);
+}
+function mapDraw(){
+  if(!MAP)return;
+  MAP.imgs.forEach(function(o){var a=scr(o.b[0],o.b[3]),c=scr(o.b[2],o.b[1]);var s=o.img.style;s.left=a[0]+"px";s.top=a[1]+"px";s.width=(c[0]-a[0])+"px";s.height=(c[1]-a[1])+"px"});
+  function path(pts,close){return pts.map(function(p,i){var m=toMerc(p[0],p[1]),q=scr(m[0],m[1]);return (i?"L":"M")+q[0].toFixed(1)+" "+q[1].toFixed(1)}).join("")+(close?"Z":"")}
+  var svg="";
+  MAP.done.forEach(function(a){svg+='<path d="'+path(a.pts,true)+'" class="poly-done"/>';var c=a.pts.reduce(function(t,p){return[t[0]+p[0]/a.pts.length,t[1]+p[1]/a.pts.length]},[0,0]),m=toMerc(c[0],c[1]),q=scr(m[0],m[1]);svg+='<text x="'+q[0]+'" y="'+q[1]+'" class="poly-label">'+esc(fmtInt(a.sqft))+'</text>'});
+  if(MAP.pts.length){svg+='<path d="'+path(MAP.pts,MAP.pts.length>2)+'" class="poly-cur"/>';MAP.pts.forEach(function(p){var m=toMerc(p[0],p[1]),q=scr(m[0],m[1]);svg+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="6" class="poly-pt"/>'})}
+  document.getElementById("map-svg").innerHTML=svg;
+}
+function mapRead(){
+  var cur=MAP.pts.length>2?polyAreaSqft(MAP.pts):0,tot=MAP.done.reduce(function(t,a){return t+a.sqft},0);
+  document.getElementById("map-read").innerHTML='Total <b>'+fmtInt(tot+cur)+'</b> sq ft<br><span>'+(MAP.pts.length>2?'This section: '+fmtInt(cur)+' sq ft':MAP.pts.length?'Keep tapping corners\u2026':'Tap to start a section')+'</span>';
+  document.getElementById("map-sections").innerHTML=MAP.done.map(function(a,i){return '<span class="sec-chip">'+esc(a.name)+': '+fmtInt(a.sqft)+' sq ft<button type="button" data-act="map-secdel" data-i="'+i+'" aria-label="Remove '+esc(a.name)+'">\u00d7</button></span>'}).join("")+(MAP.done.length>1||(MAP.done.length&&MAP.pts.length>2)?'<span class="sec-sum">= '+fmtInt(tot+cur)+' sq ft</span>':'');
+}
+function bindMap(box){
+  box.addEventListener("pointerdown",function(e){if(e.target.closest("button"))return;box.setPointerCapture(e.pointerId);MAP.ptrs[e.pointerId]={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY};MAP.moved=Object.keys(MAP.ptrs).length>1});
+  box.addEventListener("pointermove",function(e){
+    var p=MAP.ptrs[e.pointerId];if(!p)return;
+    var ids=Object.keys(MAP.ptrs);
+    if(ids.length===1){var dx=e.clientX-p.x,dy=e.clientY-p.y;if(Math.abs(e.clientX-p.sx)+Math.abs(e.clientY-p.sy)>8)MAP.moved=true;if(MAP.moved){MAP.cx-=dx*MAP.res;MAP.cy+=dy*MAP.res;mapDraw()}}
+    else if(ids.length===2){var o=MAP.ptrs[ids[0]===String(e.pointerId)?ids[1]:ids[0]];var d0=Math.hypot(p.x-o.x,p.y-o.y),d1=Math.hypot(e.clientX-o.x,e.clientY-o.y);if(d0>0&&d1>0){MAP.res=Math.min(400,Math.max(0.05,MAP.res*d0/d1));mapDraw()}}
+    p.x=e.clientX;p.y=e.clientY;
+  });
+  function up(e){
+    var p=MAP&&MAP.ptrs[e.pointerId];if(!p)return;
+    delete MAP.ptrs[e.pointerId];
+    if(!MAP.moved&&e.type==="pointerup"){var r=box.getBoundingClientRect(),m=unscr(e.clientX-r.left,e.clientY-r.top);MAP.pts.push(fromMerc(m[0],m[1]));mapDraw();mapRead()}
+    if(!Object.keys(MAP.ptrs).length)mapLoad();
+  }
+  box.addEventListener("pointerup",up);box.addEventListener("pointercancel",up);
+  box.addEventListener("wheel",function(e){e.preventDefault();MAP.res=Math.min(400,Math.max(0.05,MAP.res*(e.deltaY>0?1.25:0.8)));mapDraw();mapLoad()},{passive:false});
+}
+function mapFinish(){
+  if(MAP.pts.length<3){document.getElementById("map-hint").textContent="Tap at least three corners to make a section.";return}
+  var n=1;while(MAP.done.some(function(a){return a.name==="Section "+n}))n++;
+  MAP.done.push({name:"Section "+n,sqft:Math.round(polyAreaSqft(MAP.pts)),pts:MAP.pts.map(function(p){return[+p[0].toFixed(6),+p[1].toFixed(6)]})});
+  MAP.pts=[];mapDraw();mapRead();document.getElementById("map-hint").textContent="Section added. Outline the next section of lawn, or tap Save when you\u2019re done.";
+}
+function closeMap(){if(!MAP)return;window.removeEventListener("resize",mapResize);MAP.el.remove();MAP=null;document.body.style.overflow=""}
+function mapSave(){
+  if(MAP.pts.length>2)mapFinish();
+  if(!MAP.done.length&&!state.lawn.areas.length){document.getElementById("map-hint").textContent="Outline at least one section first, then tap Save.";return}
+  state.lawn.areas=MAP.done;state.lawn.manual=null;closeMap();persist();
+}
+
+/* ---------- barcode scanning (camera stays on the phone; nothing is uploaded) ---------- */
+function normUpc(v){var d=String(v||"").replace(/\D/g,"");if(d.length<6||d.length>14)return "";if(d.length===13&&d[0]==="0")d=d.slice(1);return d}
+function findByUpc(code){code=normUpc(code);if(!code)return null;return state.products.find(function(p){return p.upc&&normUpc(p.upc)===code})||null}
+var SCAN=null;
+function loadZXing(){
+  if(window.ZXing)return Promise.resolve();
+  return new Promise(function(ok,bad){var sc=document.createElement("script");sc.src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";sc.onload=ok;sc.onerror=bad;document.head.appendChild(sc)});
+}
+function openScanner(onCode){
+  closeScanner();
+  var el=document.createElement("div");el.id="scanview";el.setAttribute("role","dialog");el.setAttribute("aria-label","Scan a barcode");
+  el.innerHTML='<div class="map-top"><button class="btn small" data-act="scan-close">Cancel</button><div class="map-read">Scan a barcode</div><span style="width:72px"></span></div>'+
+    '<div class="scan-box"><video id="scan-video" playsinline muted></video><div class="scan-frame"></div><div class="map-hint" id="scan-hint">Starting the camera\u2026</div></div>'+
+    '<div class="scan-manual"><label class="field" style="margin:0">Or type the number under the barcode<div class="unit-row"><input type="text" id="scan-num" inputmode="numeric" maxlength="24" placeholder="e.g. 032247278557"><button class="btn primary small" data-act="scan-typed">Look up</button></div></label></div>';
+  document.body.appendChild(el);document.body.style.overflow="hidden";
+  SCAN={el:el,onCode:onCode,stream:null,timer:null,reader:null,done:false};
+  var video=document.getElementById("scan-video"),hint=document.getElementById("scan-hint");
+  function found(code){if(!SCAN||SCAN.done)return;SCAN.done=true;if(navigator.vibrate)navigator.vibrate(60);var cb=SCAN.onCode;closeScanner();cb(code)}
+  function noCam(){hint.textContent="The camera isn\u2019t available here. Type the number under the barcode instead.";var n=document.getElementById("scan-num");if(n)n.focus()}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){noCam();return}
+  if("BarcodeDetector" in window){
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false}).then(function(st){
+      if(!SCAN){st.getTracks().forEach(function(t){t.stop()});return}
+      SCAN.stream=st;video.srcObject=st;video.play();hint.textContent="Point the camera at the barcode.";
+      var det=new window.BarcodeDetector({formats:["upc_a","upc_e","ean_13","ean_8"]});
+      (function loop(){if(!SCAN||SCAN.done)return;det.detect(video).then(function(c){if(c&&c.length)found(c[0].rawValue);else SCAN.timer=setTimeout(loop,180)}).catch(function(){SCAN.timer=setTimeout(loop,400)})})();
+    }).catch(noCam);
+  }else{
+    loadZXing().then(function(){
+      if(!SCAN)return;
+      var r=new window.ZXing.BrowserMultiFormatReader();SCAN.reader=r;hint.textContent="Point the camera at the barcode.";
+      return r.decodeFromConstraints({video:{facingMode:{ideal:"environment"}}},video,function(res){if(res)found(res.getText())});
+    }).catch(noCam);
+  }
+}
+function closeScanner(){
+  if(!SCAN)return;
+  clearTimeout(SCAN.timer);
+  if(SCAN.stream)SCAN.stream.getTracks().forEach(function(t){t.stop()});
+  if(SCAN.reader)try{SCAN.reader.reset()}catch(e){}
+  SCAN.el.remove();SCAN=null;if(!MAP)document.body.style.overflow="";
+}
+function showProductCard(p){
+  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pc-title">'+
+    '<p class="pc-match">\u2713 Matches your saved product</p><h2 id="pc-title">'+esc(p.name)+'</h2>'+
+    '<p class="m" style="margin:0 0 10px">'+esc(prodSummary(p))+(p.upc?'. Barcode '+esc(p.upc):'')+'</p>'+
+    '<div class="pc-need">'+esc(prodCalc(p,lawnSqft()))+(p.price!=null?'<div class="pc-cost">'+(prodCostUsed(p,lawnSqft())!=null?'Cost for your lawn: '+money(prodCostUsed(p,lawnSqft()))+'. ':'')+'Price: '+money(p.price)+' a '+pkgWord(p,1)+'.</div>':'')+'</div>'+
+    '<div class="actions"><button class="btn ghost" data-act="prod-edit" data-id="'+esc(p.id)+'" style="margin-right:auto">Edit</button><button class="btn ghost" data-act="prod-close">Close</button><button class="btn primary" data-act="pc-log" data-name="'+esc(p.name)+'">Log work with it</button></div></div>';
+}
+function showUnknownCode(code){
+  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="uc-title"><h2 id="uc-title">New barcode</h2>'+
+    '<p class="note">Barcode '+esc(code)+' isn\u2019t saved yet. Add the product\u2019s details from its label once, and next time a scan will show how much you need right away.</p>'+
+    '<div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="uc-add" data-upc="'+esc(code)+'">Add this product</button></div></div>';
+}
+
+/* ---------- reminder notifications ----------
+   Settings are saved now. Notifications are actually delivered by the Play Store (Capacitor) build,
+   using the phone's own scheduler (@capacitor/local-notifications). Nothing is sent to a server.
+   Play Store build to-do: install @capacitor/local-notifications, then this code turns on by itself
+   because window.Capacitor.Plugins.LocalNotifications exists. See SETUP.md. */
+function notifyCfg(){if(!state.notify)state.notify={on:false,time:"08:00",lead:"before",tasks:null};return state.notify}
+function nativeNotify(){var c=window.Capacitor;return c&&c.Plugins&&c.Plugins.LocalNotifications?c.Plugins.LocalNotifications:null}
+function notifyTaskOn(task){var n=notifyCfg();return !n.tasks||n.tasks.indexOf(task)>=0}
+function upcomingNotifications(){
+  var n=notifyCfg(),out=[];if(!n.on)return out;
+  var hm=(n.time||"08:00").split(":"),now=Date.now();
+  state.schedules.forEach(function(s,i){
+    if(!notifyTaskOn(s.task))return;
+    var last=lastDone(s.task);if(!last)return;
+    var due=addDays(last,Math.max(1,+s.every||7)),fire=n.lead==="before"?addDays(due,-1):due;
+    var d=parse(fire);d.setHours(+hm[0]||8,+hm[1]||0,0,0);
+    if(d.getTime()<=now)return;
+    var lp=lastProduct(s.task);
+    out.push({id:1000+i,at:d,title:"TurfDiary: "+s.task+(n.lead==="before"?" is due tomorrow":" is due today"),
+      body:"Last done "+fmt(last)+(lp?" with "+lp:"")+". Every "+s.every+" "+pl(+s.every,"day")+"."});
+  });
+  return out;
+}
+var notifySig="";
+function scheduleNotifications(){
+  var LN=nativeNotify();if(!LN)return;
+  var list=upcomingNotifications(),sig=JSON.stringify(list.map(function(x){return[x.id,+x.at,x.title]}));
+  if(sig===notifySig)return;notifySig=sig;
+  LN.getPending().then(function(p){var ids=(p&&p.notifications||[]).filter(function(x){return x.id>=1000&&x.id<2000}).map(function(x){return{id:x.id}});return ids.length?LN.cancel({notifications:ids}):null})
+    .then(function(){if(!list.length)return;return LN.schedule({notifications:list.map(function(x){return{id:x.id,title:x.title,body:x.body,schedule:{at:x.at,allowWhileIdle:true}}})})})
+    .catch(function(){});
+}
+function notifyHTML(){
+  var n=notifyCfg(),ready=!!nativeNotify();
+  var h='<div class="settings-block" id="notify-block"><label class="switch-row"><span><b>Remind me before work is due</b><br><span class="m">Get a notification for your reminders.</span></span><input type="checkbox" class="switch" data-act="notify-on"'+(n.on?' checked':'')+' aria-label="Turn on reminder notifications"></label>';
+  if(n.on){
+    h+='<div class="notify-opts"><label class="field" style="margin-top:12px">Time of day<input type="time" data-act="notify-time" value="'+esc(n.time||"08:00")+'"></label>'+
+      '<fieldset><legend>When</legend><div class="chips"><button type="button" class="chip" data-act="notify-lead" data-v="before" aria-pressed="'+(n.lead==="before")+'">The day before</button><button type="button" class="chip" data-act="notify-lead" data-v="day" aria-pressed="'+(n.lead!=="before")+'">On the due day</button></div></fieldset>';
+    if(state.schedules.length)h+='<fieldset><legend>Which reminders</legend><div class="chips">'+state.schedules.map(function(s){return '<button type="button" class="chip" data-act="notify-task" data-task="'+esc(s.task)+'" aria-pressed="'+notifyTaskOn(s.task)+'">'+esc(s.task)+'</button>'}).join("")+'</div></fieldset>';
+    h+='</div>';
+  }
+  h+='<p class="src">'+(ready?'Notifications are scheduled on this phone. Nothing is sent to a server.':'Your choices are saved. Notifications will start working in the TurfDiary app from the Google Play Store.')+'</p></div>';
+  return h;
 }
 
 /* ---------- views ---------- */
@@ -290,15 +607,27 @@ function allPhotos(){
   return out;
 }
 function viewHome(){
-  var t=todayISO(),last=lastDone("Mow"),big,sub;
+  var t=todayISO(),last=lastDone("Mow"),big,sub,yr=t.slice(0,4);
+  var mows=state.entries.filter(function(e){return e.task==="Mow"&&e.date.slice(0,4)===yr}).length;
   if(!last){big="Not yet";sub="Log a mow to start the count."}
-  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" days ago";sub=fmtLong(last)}
-  var h='<section class="hero"><div class="hero-top"><span>Last mow</span><span class="status-text" id="status" aria-live="polite">'+esc(statusText)+'</span></div>'+
-    '<div class="big">'+esc(big)+'</div><div class="hero-sub">'+esc(sub)+'</div><button class="btn" data-act="open-log">Log work</button></section>';
+  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" days ago";sub=fmtLong(last)+(mows?". "+mows+" "+pl(mows,"mow")+" this year":"")}
+  var ms=state.schedules.find(function(x){return x.task==="Mow"}),next="";
+  if(ms&&last){var due=addDays(last,Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?"Mowing is "+(-dd)+" "+pl(-dd,"day")+" overdue":dd===0?"Next mow: today":dd===1?"Next mow: tomorrow":"Next mow: "+fmtWeekday(due)+" (in "+dd+" days)"}
+  var sq=lawnSqft(),lf=lastDone("Fertilize"),spent=state.entries.reduce(function(a,e){return a+(e.date.slice(0,4)===yr&&e.cost>0?e.cost:0)},0);
+  var fd=lf?daysBetween(lf,t):null,fertTxt=lf?(fd<=0?"Today":fd===1?"Yesterday":fd+" days"):"Not yet",fertNote=lf?(fd>1?"ago":"")+(lastProduct("Fertilize")?(fd>1?", ":"")+lastProduct("Fertilize"):""):"";
+  function tile(act,extra,label,value,note){return '<button class="hero-tile" data-act="'+act+'"'+extra+'><span class="ht-l">'+esc(label)+'</span><span class="ht-v">'+esc(value)+'</span>'+(note?'<span class="ht-n">'+esc(note)+'</span>':'')+'</button>'}
+  var h='<header class="app-head"><span class="app-name">TurfDiary</span><button class="icon-btn" data-act="tab" data-tab="settings" aria-label="Settings">'+ICONS.gear+'</button></header>'+
+    '<section class="hero"><div class="hero-top"><span>Last mow</span><span class="status-text" id="status" aria-live="polite">'+esc(statusText)+'</span></div>'+
+    '<div class="big">'+esc(big)+'</div><div class="hero-sub">'+esc(sub)+'</div>'+(next?'<div class="hero-next">'+esc(next)+'</div>':'')+
+    '<div class="hero-tiles">'+
+      tile("tab",' data-tab="settings"',"Lawn",sq>0?fmtInt(sq):"Measure",sq>0?"sq ft":"tap to start")+
+      tile("open-log",' data-task="Fertilize" aria-label="Log fertilizer. Last fertilized: '+esc(fertTxt+(fertNote?" "+fertNote:""))+'"',"Fertilized",fertTxt,fertNote)+
+      tile("tab",' data-tab="spend"',"Spent",money(spent),"in "+yr)+
+    '</div></section>';
   h+=wxCardHTML();
-  h+='<h2>Coming up</h2>';
+  h+='<div class="sec-head"><h2>Coming up</h2><button class="link small" data-act="tab" data-tab="settings">Edit reminders</button></div>';
   var items=dueItems();
-  if(!items.length)h+='<p class="empty">No reminders set. <button class="link" data-act="tab" data-tab="remind">Add a reminder</button></p>';
+  if(!items.length)h+='<p class="empty">No reminders set. <button class="link" data-act="tab" data-tab="settings">Add a reminder</button></p>';
   else h+='<div class="list">'+items.map(function(it){
     return '<div class="item"><div class="grow"><div class="t">'+esc(it.task)+'</div><div class="s '+it.cls+'">'+esc(it.label)+'</div><div class="m">'+esc(it.meta)+'</div></div>'+
       (function(){var q=state.entries.find(function(e){return e.task===it.task&&e.date===todayISO()&&e.quick});
@@ -362,16 +691,39 @@ function viewRemind(){
   return h;
 }
 function viewSettings(){
-  var h='<h1 class="page">Settings</h1><h2 style="margin-top:0">Weather</h2>'+wxSettingsHTML()+'<h2>Backup</h2><div class="settings-block"><p>Your log and photos are saved only on this phone. Save a backup file now and then, especially before switching phones.</p>'+
+  var h='<h1 class="page">Settings</h1><h2 style="margin-top:0">My lawn</h2>'+lawnHTML()+'<h2>Reminders</h2>'+viewRemind().replace('<h1 class="page">Reminders</h1>','').replace('<h2>Add a reminder</h2>','<h3 class="sub-h">Add a reminder</h3>')+'<h2>Notifications</h2>'+notifyHTML()+'<h2>Weather</h2>'+wxSettingsHTML()+'<h2>Backup</h2><div class="settings-block"><p>Your log and photos are saved only on this phone. Save a backup file now and then, especially before switching phones.</p>'+
      '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="export">Save backup</button><label class="btn file-btn">Restore backup<input type="file" accept="application/json,.json" class="vh" data-act="import" aria-label="Choose a backup file to restore"></label></div>'+
      '<p class="err" id="backup-msg" role="status" style="margin-top:10px"></p></div>';
   return h;
 }
+var ICONS={
+  home:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>',
+  history:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  products:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/><path d="M9.5 13.5c1.5 1 3.5 1 5 0"/></svg>',
+  spend:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M7 9.5v5M17 9.5v5"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
+};
+function viewProducts(){
+  return '<h1 class="page">Products</h1><div class="toolbar" style="justify-content:flex-start;margin-bottom:6px"><button class="btn primary" data-act="prod-new">Add a product</button><button class="btn" data-act="scan-lookup">Scan a barcode</button></div>'+
+    '<h2>My products</h2>'+productsHTML();
+}
+function openPlus(){
+  document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet plus-sheet" role="dialog" aria-modal="true" aria-labelledby="plus-title"><h2 id="plus-title">Add</h2>'+
+    '<div class="plus-grid"><button class="plus-opt" data-act="plus-log"><b>Log work</b><span>Mowing, fertilizing and other yard jobs</span></button>'+
+    '<button class="plus-opt" data-act="plus-prod"><b>Add a product</b><span>Save its rate, price and barcode</span></button>'+
+    '<button class="plus-opt" data-act="plus-scan"><b>Scan a product</b><span>Check a bag and see how much you need</span></button>'+
+    '<button class="plus-opt" data-act="plus-exp"><b>Add an expense</b><span>Supplies, equipment or other costs</span></button></div>'+
+    '<div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button></div></div>';
+  document.addEventListener("keydown",onKey);
+  var f=document.querySelector(".plus-opt");if(f)f.focus();
+}
 function render(){
-  var v=tab==="history"?viewHistory():tab==="spend"?viewSpend():tab==="remind"?viewRemind():tab==="settings"?viewSettings():viewHome();
-  var tabs=[["home","Home"],["history","History"],["spend","Spending"],["remind","Reminders"],["settings","Settings"]];
+  ensureData();
+  var v=tab==="history"?viewHistory():tab==="spend"?viewSpend():tab==="products"?viewProducts():tab==="settings"?viewSettings():viewHome();
+  function tb(id,label){return '<button data-act="tab" data-tab="'+id+'"'+(tab===id?' aria-current="page"':'')+'>'+ICONS[id]+'<span>'+label+'</span></button>'}
   document.getElementById("root").innerHTML='<main>'+v+'</main><nav class="tabs" aria-label="Sections"><div class="in">'+
-    tabs.map(function(t){return '<button data-act="tab" data-tab="'+t[0]+'"'+(tab===t[0]?' aria-current="page"':'')+'>'+t[1]+'</button>'}).join("")+'</div></nav>';
+    tb("home","Home")+tb("history","History")+'<button class="plus-btn" data-act="plus" aria-label="Add: log work, a product, a scan or an expense">'+ICONS.plus+'</button>'+tb("products","Products")+tb("spend","Spending")+'</div></nav>';
   hydrate();
 }
 
@@ -393,7 +745,7 @@ function renderTaskFields(){
     if(!wasMulti){var k=sheetTasks[0];if(fp.value||fc.value)multiVals[k]={p:fp.value,c:fc.value}}
     sp.hidden=true;sc.hidden=true;
     mf.innerHTML='<div class="field">Product and cost for each task (optional)'+sheetTasks.map(function(t){var v=multiVals[t]||{};
-      return '<div class="mt-row"><div class="mt-name">'+esc(t)+'</div><input type="text" list="prod-list" maxlength="80" autocomplete="off" placeholder="Product" aria-label="Product for '+esc(t)+'" data-mt="'+esc(t)+'" data-f="p" value="'+esc(v.p||"")+'"><input type="number" inputmode="decimal" step="0.01" min="0" placeholder="Cost" aria-label="Cost for '+esc(t)+'" data-mt="'+esc(t)+'" data-f="c" value="'+esc(v.c||"")+'"></div>';
+      return '<div class="mt-row"><div class="mt-name">'+esc(t)+'</div><input type="text" list="prod-list" maxlength="80" autocomplete="off" placeholder="Product" aria-label="Product for '+esc(t)+'" data-mt="'+esc(t)+'" data-f="p" value="'+esc(v.p||"")+'"><input type="number" inputmode="decimal" step="0.01" min="0" placeholder="Cost" aria-label="Cost for '+esc(t)+'" data-mt="'+esc(t)+'" data-f="c" value="'+esc(v.c||"")+'"><div class="mt-calc calc">'+calcHTML(v.p||"",t)+'</div></div>';
     }).join("")+'</div>';
   }else{
     if(wasMulti&&sheetTasks.length===1){var v=multiVals[sheetTasks[0]];if(v){fp.value=v.p||"";fc.value=v.c||""}}
@@ -412,9 +764,9 @@ function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp){
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">'+
     '<h2 id="sheet-title">'+(editId?"Edit entry":ex?"Add expense":"Log work")+'</h2>'+
     '<fieldset><legend>'+(ex?"What it was for":multiOK?"Tasks (pick one or more)":"Task")+'</legend><div class="chips">'+TASKS.map(function(t){return '<button type="button" class="chip" data-act="pick-task" data-task="'+esc(t)+'" aria-pressed="'+(t===sheetTask)+'">'+esc(t)+'</button>'}).join("")+'</div></fieldset>'+
-    '<div id="single-prod"><label class="field">'+(ex?"What you bought (optional)":"Product used (optional)")+'<input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"></label>'+
-    '<datalist id="prod-list">'+recentProducts().map(function(p){return '<option value="'+esc(p)+'">'}).join("")+'</datalist>'+
-    '<div class="chips prod-chips" id="prod-chips"></div></div><div id="multi-fields"></div>'+
+    '<div id="single-prod"><label class="field">'+(ex?"What you bought (optional)":"Product used (optional)")+'<div class="unit-row"><input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"><button type="button" class="btn small" data-act="scan-into-log" aria-label="Scan a product barcode">Scan</button></div></label>'+
+    '<datalist id="prod-list">'+productNames().map(function(p){return '<option value="'+esc(p)+'">'}).join("")+'</datalist>'+
+    '<div class="calc" id="prod-calc"></div><div class="chips prod-chips" id="prod-chips"></div></div><div id="multi-fields"></div>'+
     '<label class="field">Date<input type="date" id="f-date" value="'+esc(date||todayISO())+'"></label>'+
     '<div id="single-cost"><label class="field">'+(ex?"Amount":"Cost (optional)")+'<input type="number" id="f-cost" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="'+esc(cost||"")+'"></label></div>'+
     (ex?'':'<label class="field">Soil temperature, \u00b0F (optional)<input type="number" id="f-soil" inputmode="decimal" step="0.1" min="-20" max="130" placeholder="From your thermometer" value="'+esc(soilTemp==null?"":soilTemp)+'"></label>')+
@@ -422,7 +774,7 @@ function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp){
     '<label class="field">Notes (optional)<textarea id="f-note" rows="2" maxlength="300" placeholder="Mower height, weather, how it went\u2026">'+esc(note||"")+'</textarea></label>'+
     '<p class="err" id="f-err" role="alert"></p><div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button><button class="btn primary" data-act="save-log">'+(editId?"Save changes":ex?"Save expense":"Save entry")+'</button></div></div>';
   document.addEventListener("keydown",onKey);
-  updateProductChips();renderPhotoField();
+  updateProductChips();renderPhotoField();refreshAllCalcs();
   var f=document.querySelector('.chip[aria-pressed="true"]')||document.querySelector(".chip");if(f)f.focus();
 }
 function closeSheet(){
@@ -563,7 +915,7 @@ document.addEventListener("click",function(ev){
     document.querySelectorAll('[data-act="pick-task"]').forEach(function(c){c.setAttribute("aria-pressed",String(sheetTasks.indexOf(c.dataset.task)>=0))});
     document.getElementById("f-err").textContent="";updateProductChips();renderTaskFields();
   }
-  else if(a==="pick-product"){var pi=document.getElementById("f-product");if(pi){pi.value=el.dataset.product;pi.focus()}}
+  else if(a==="pick-product"){var pi=document.getElementById("f-product");if(pi){pi.value=el.dataset.product;updateCalc(pi);pi.focus()}}
   else if(a==="save-log")saveLog();
   else if(a==="done-today"){
     var task=el.dataset.task,t=todayISO();
@@ -598,16 +950,56 @@ document.addEventListener("click",function(ev){
     state.schedules.push({task:document.getElementById("new-task").value,every:n});persist();
   }
   else if(a==="export")exportBackup();
+  else if(a==="notify-lead"){notifyCfg().lead=el.dataset.v;persist()}
+  else if(a==="notify-task"){var nc=notifyCfg(),all=state.schedules.map(function(x){return x.task}),cur=nc.tasks?nc.tasks.slice():all.slice(),ix=cur.indexOf(el.dataset.task);if(ix>=0)cur.splice(ix,1);else cur.push(el.dataset.task);nc.tasks=cur.length===all.length?null:cur;persist()}
+  else if(a==="prod-del-ask"){var dp=state.products.find(function(x){return x.id===el.dataset.id});if(dp){sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pd-title"><h2 id="pd-title">Delete this product?</h2><p class="note">Are you sure you want to delete <b>'+esc(dp.name)+'</b>? Its rate, price and barcode will be removed. This can\u2019t be undone. Work you already logged with it stays in your history.</p><div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn danger" data-act="prod-del-yes" data-id="'+esc(dp.id)+'">Delete</button></div></div>';var cb2=document.querySelector('#sheet2 [data-act="prod-close"].btn');if(cb2)cb2.focus()}}
+  else if(a==="prod-del-yes"){var did2=el.dataset.id;state.products=state.products.filter(function(x){return x.id!==did2});closeSheet2();persist()}
+  else if(a==="hist-task"){histFilter=state.entries.some(function(e){return e.task===el.dataset.task})?el.dataset.task:"all";tab="history";try{localStorage.setItem(LS_TAB,tab)}catch(e){}render();window.scrollTo(0,0)}
+  else if(a==="plus")openPlus();
+  else if(a==="plus-log"){closeSheet();openSheet()}
+  else if(a==="plus-prod"){closeSheet();openProduct(null)}
+  else if(a==="plus-scan"){closeSheet();openScanner(function(code){var p=findByUpc(code);if(p)showProductCard(p);else showUnknownCode(normUpc(code)||code)})}
+  else if(a==="plus-exp"){closeSheet();openSheet("Supplies","","","","",null,"expense")}
+  else if(a==="scan-lookup")openScanner(function(code){var p=findByUpc(code);if(p)showProductCard(p);else showUnknownCode(normUpc(code)||code)});
+  else if(a==="scan-close")closeScanner();
+  else if(a==="use-cost"){var tg=el.dataset.t,inp=tg==="f"?document.getElementById("f-cost"):Array.prototype.find.call(document.querySelectorAll('[data-mt][data-f="c"]'),function(x){return x.dataset.mt===tg});if(inp){inp.value=el.dataset.v;inp.dispatchEvent(new Event("input",{bubbles:true}))}}
+  else if(a==="scan-typed"){var tn=normUpc(document.getElementById("scan-num").value);if(!tn){document.getElementById("scan-hint").textContent="Enter the 6 to 14 digit number under the barcode.";return}var cbk=SCAN.onCode;closeScanner();cbk(tn)}
+  else if(a==="scan-into-product")openScanner(function(code){var u=document.getElementById("p-upc");if(u)u.value=normUpc(code)||code;var ex2=findByUpc(code);var e2=document.getElementById("p-err");if(ex2&&ex2.id!==prodEditId&&e2)e2.textContent="That barcode is already saved for "+ex2.name+"."});
+  else if(a==="scan-into-log")openScanner(function(code){var p=findByUpc(code),fi=document.getElementById("f-product");if(p&&fi){fi.value=p.name;updateCalc(fi)}else openProduct(null,fi?fi.value:"",normUpc(code)||code)});
+  else if(a==="pc-log"){var nm=el.dataset.name;closeSheet2();openSheet(null,"","",nm)}
+  else if(a==="uc-add"){var up=el.dataset.upc;closeSheet2();openProduct(null,"",up)}
+  else if(a==="prod-new")openProduct(null,el.dataset.name);
+  else if(a==="prod-edit")openProduct(el.dataset.id);
+  else if(a==="prod-close")closeSheet2();
+  else if(a==="prod-save")saveProduct();
+  else if(a==="prod-mode"){prodMode=el.dataset.mode;document.querySelectorAll('[data-act="prod-mode"]').forEach(function(c){c.setAttribute("aria-pressed",String(c===el))});document.getElementById("p-cover").hidden=prodMode!=="cover";document.getElementById("p-rate").hidden=prodMode!=="rate"}
+  else if(a==="prod-del"){if(prodEditId){state.products=state.products.filter(function(x){return x.id!==prodEditId});saveQuiet();closeSheet2();if(document.getElementById("f-product"))refreshAllCalcs();else render()}}
+  else if(a==="lawn-map")openMap();
+  else if(a==="lawn-manual")openManualLawn();
+  else if(a==="ml-save"){var mv=parseFloat(document.getElementById("ml-n").value);state.lawn.manual=mv>0?Math.round(mv):null;closeSheet2();persist()}
+  else if(a==="lawn-del"){state.lawn.areas.splice(+el.dataset.i,1);persist()}
+  else if(a==="map-close")closeMap();
+  else if(a==="map-save")mapSave();
+  else if(a==="map-finish")mapFinish();
+  else if(a==="map-undo"){MAP.pts.pop();mapDraw();mapRead()}
+  else if(a==="map-clear"){MAP.pts=[];mapDraw();mapRead()}
+  else if(a==="map-secdel"){MAP.done.splice(+el.dataset.i,1);mapDraw();mapRead()}
+  else if(a==="map-zin"){MAP.res=Math.max(0.05,MAP.res/1.6);mapDraw();mapLoad()}
+  else if(a==="map-zout"){MAP.res=Math.min(400,MAP.res*1.6);mapDraw();mapLoad()}
+  else if(a==="map-me")mapLocate(false);
   else if(a==="wx-gps")wxUseGPS();
   else if(a==="wx-retry")loadWx(true);
   else if(a==="wx-day"){wxSel=+el.dataset.i;document.querySelectorAll(".wx-day").forEach(function(b,i){b.classList.toggle("sel",i===wxSel);b.setAttribute("aria-pressed",String(i===wxSel))});var tp=document.querySelector(".wx-today");if(tp){tp.classList.toggle("sel",wxSel<0);tp.setAttribute("aria-pressed",String(wxSel<0))}var dd=document.getElementById("wx-detail");if(dd&&wx)dd.textContent=wxDayText(wxDays(wx.periods)[wxSel+1])}
   else if(a==="wx-remove"){state.wxLoc=null;wx=null;wxErr="";try{localStorage.removeItem(LS_WX)}catch(e){}persist()}
   else if(a==="confirm-import")confirmImport();
 });
-document.addEventListener("keydown",function(ev){if((ev.key==="Enter"||ev.key===" ")&&ev.target.classList&&ev.target.classList.contains("wx-today")){ev.preventDefault();ev.target.click()}});
+document.addEventListener("input",function(ev){var t=ev.target;if(t.id==="f-product"||(t.dataset&&t.dataset.mt&&t.dataset.f==="p"))updateCalc(t)});
+document.addEventListener("keydown",function(ev){if(ev.key==="Enter"&&ev.target.id==="scan-num"){ev.preventDefault();var b=document.querySelector('[data-act="scan-typed"]');if(b)b.click();return}if((ev.key==="Enter"||ev.key===" ")&&ev.target.classList&&ev.target.classList.contains("wx-today")){ev.preventDefault();ev.target.click()}});
 document.addEventListener("change",function(ev){
   var el=ev.target,a=el.dataset&&el.dataset.act;
   if(a==="add-photo"){addPhotos(el.files);el.value="";return}
+  if(a==="notify-on"){var nc2=notifyCfg();nc2.on=el.checked;var LN2=nativeNotify();if(el.checked&&LN2){LN2.requestPermissions().then(function(r){if(r&&r.display!=="granted"){nc2.on=false;setStatus("Notifications are blocked. Allow them for TurfDiary in your phone\u2019s settings.")}persist()}).catch(function(){persist()})}else persist();return}
+  if(a==="notify-time"){notifyCfg().time=el.value||"08:00";persist();return}
   if(a==="import"){if(el.files[0])readImport(el.files[0]);el.value="";return}
   if(a==="sched-every"){var n=parseInt(el.value,10);if(n>=1&&n<=365){state.schedules[+el.dataset.i].every=n;persist()}else render()}
   else if(a==="hist-filter"){histFilter=el.value;render()}
@@ -615,6 +1007,7 @@ document.addEventListener("change",function(ev){
 });
 
 render();
+scheduleNotifications();
 loadWx(false);
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")loadWx(false)});
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
