@@ -368,3 +368,90 @@ nav.tabs .plus-btn svg{width:28px;height:28px;stroke-width:2.6}
 .mow-anim.under{z-index:0}
 .ht-v{font-size:19px;letter-spacing:-.01em}
 @media (max-width:370px){.ht-v{font-size:16.5px}}
+
+.cat-h{font-size:14px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.cat-h:first-child{margin-top:0}
+.cat-h span{font-weight:600;letter-spacing:0;color:var(--muted);opacity:.8}
+select{width:100%}
+.field select{display:block;margin-top:6px}
+.unit-row select{width:auto}
+
+.no-rate{flex-basis:100%;background:var(--chip);border-radius:12px;padding:12px 14px;margin-bottom:4px;display:flex;flex-direction:column;gap:4px}
+.no-rate span{color:var(--muted);font-size:14px}
+#p-actions{flex-wrap:wrap}
+
+/* fixed-height Last mow card */
+.hero-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:34px;margin:0 0 14px}
+.hero-row .hero-sub{margin:0;font-size:16px;white-space:nowrap}
+.hero-row .hero-next{margin:0;font-size:13.5px;padding:5px 11px;white-space:nowrap}
+.hero-next.late{background:#F2B33D;color:#2B2410}
+@media (max-width:370px){.hero-row .hero-sub{font-size:15px}.hero-row .hero-next{font-size:12.5px;padding:4px 9px}}
+/* toast for quick confirmations */
+#toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);background:var(--ink);color:var(--surface);font-weight:600;font-size:15px;padding:10px 16px;border-radius:999px;box-shadow:0 6px 18px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60;max-width:calc(100% - 32px);text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+/* stop scroll from leaking out of sheets */
+.sheet{overscroll-behavior:contain}
+.mow-btn{border:1.5px solid transparent}
+
+/* receipts */
+.rc-btn{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px}
+.rc-btn svg,.toolbar .btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:var(--chip);border-radius:12px;padding:10px 12px}
+.rc-head b{display:block}.rc-head span{font-size:13px;color:var(--muted)}
+.rc-total{font-size:22px;font-weight:800;text-align:right;font-variant-numeric:tabular-nums}
+.rc-total span{display:block;font-size:12px;font-weight:600}
+.rc-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.rc-row{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
+.rc-row.ok{border-color:var(--grass)}
+.rc-line{display:flex;justify-content:space-between;gap:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.rc-price{font-weight:700;white-space:nowrap}
+.rc-how{color:var(--grass);font-weight:700;font-size:14px;margin:4px 0}
+.rc-how span{font-weight:500;color:var(--muted)}
+.rc-row select{margin-top:6px}
+.rc-upd{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:8px;color:var(--muted)}
+#toast{width:max-content}
+
+/* More details */
+details.more{border:1px solid var(--line);border-radius:12px;padding:0 12px;margin:0 0 14px;background:var(--bg)}
+details.more>summary{cursor:pointer;font-weight:700;padding:12px 0;list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::after{content:"+";float:right;font-weight:800;color:var(--grass)}
+details.more[open]>summary::after{content:"\2212"}
+#more-sum{font-weight:500;color:var(--muted)}
+details.more[open]{padding-bottom:2px}
+.auto-note{font-size:13px;color:var(--muted);margin:-8px 0 8px}
+.auto-note:empty{display:none}
+/* tappable Coming up */
+.due-open{appearance:none;border:0;background:none;font:inherit;color:inherit;text-align:left;padding:0;cursor:pointer}
+.chev{color:var(--muted);font-weight:700}
+.link.again{margin-top:4px;font-size:13.5px}
+/* onboarding */
+.onb-steps{display:flex;gap:6px;margin-bottom:6px}
+.onb-steps i{flex:1;height:5px;border-radius:3px;background:var(--line)}
+.onb-steps i.on{background:var(--grass)}
+.onb h2{margin-top:6px}
+.onb-ok{font-weight:700;color:var(--grass)}
+.onb-row{cursor:pointer}
+.onb-row input[type=checkbox]{width:22px;height:22px;accent-color:var(--grass);flex:none}
+.onb-row .every{margin:0}
+/* backup reminder */
+.backup-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--day-tint);border:1px solid #F2B33D;border-radius:16px;padding:12px 14px;margin-bottom:14px}
+.backup-banner b{display:block}
+.backup-banner span{font-size:14px;color:var(--muted)}
+.bb-acts{display:flex;gap:8px;margin-left:auto}
+
+/* app lock */
+#lockview{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top,0px))}
+.lock-in{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;width:100%;max-width:340px}
+.lock-logo{width:64px;height:64px;border-radius:18px;background:var(--grass);color:var(--grass-ink);display:flex;align-items:center;justify-content:center}
+.lock-logo svg{width:38px;height:38px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.lock-in h2{margin:6px 0 0}
+.pin-dots{display:flex;gap:16px;margin:14px 0 4px}
+.pin-dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--grass)}
+.pin-dots i.on{background:var(--grass)}
+.lock-msg{min-height:1.4em}
+.pin-pad{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%;margin:6px 0 10px}
+.pin-k{font:inherit;font-size:26px;font-weight:700;height:64px;border-radius:18px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pin-k.small{font-size:22px;background:transparent;border-color:transparent}
+.pin-k svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.pin-input{letter-spacing:.6em;font-size:22px;text-align:center}
