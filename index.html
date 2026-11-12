@@ -17,7 +17,22 @@
 <noscript><p style="padding:16px">TurfDiary needs JavaScript turned on.</p></noscript>
 <script src="app.js"></script>
 <script>
-if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
+if("serviceWorker" in navigator){
+  /* Faster updates: check for a new version on open and whenever the app comes back to the screen,
+     then switch to it automatically (or right after a form is closed). */
+  var hadController=!!navigator.serviceWorker.controller,reloading=false;
+  navigator.serviceWorker.addEventListener("controllerchange",function(){
+    if(!hadController||reloading)return;
+    function go(){if(reloading)return;reloading=true;try{sessionStorage.setItem("td-updated","1")}catch(e){}location.reload()}
+    if(document.querySelector("#sheet .sheet,#sheet2 .sheet,#mapview,#scanview")){var iv=setInterval(function(){if(!document.querySelector("#sheet .sheet,#sheet2 .sheet,#mapview,#scanview")){clearInterval(iv);go()}},1000)}else go();
+  });
+  window.addEventListener("load",function(){
+    navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(function(reg){
+      document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")reg.update().catch(function(){})});
+    }).catch(function(){});
+    try{if(sessionStorage.getItem("td-updated")){sessionStorage.removeItem("td-updated");setTimeout(function(){if(window.tdToast)tdToast("TurfDiary updated to the latest version")},600)}}catch(e){}
+  });
+}
 </script>
 </body>
 </html>

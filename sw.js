@@ -1,12 +1,13 @@
 /* TurfDiary service worker: keeps the app working offline.
    Change VERSION whenever you upload new app files so phones pick up the update. */
-const VERSION = "turfdiary-v23";
+const VERSION = "turfdiary-v24";
 const FILES = ["./", "./index.html", "./app.js", "./styles.css", "./manifest.webmanifest",
   "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png",
   "./sc-mow.png", "./sc-receipt.png", "./sc-log.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)));
+  /* cache: "reload" skips the browser's own short-term cache so the newest files are stored */
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES.map(f => new Request(f, { cache: "reload" })))));
   self.skipWaiting();
 });
 self.addEventListener("activate", e => {

@@ -1182,9 +1182,10 @@ function entryRow(e,del){
   var d=parse(e.date);
   return '<div class="item"><div class="date"><span>'+d.getDate()+'</span><small>'+esc(d.toLocaleDateString(undefined,{month:"short"}))+'</small></div>'+
     '<div class="grow"><div class="t task-name">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.area?'<div class="m">Area: '+esc(e.areas?areaLabel(e.areas):titleCase(e.area))+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.weather?'<div class="m">Weather: '+esc(e.weather)+'</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+
+    (del&&e.kind!=="expense"?'<button class="btn mini again3 again-under" data-act="log-again" data-id="'+esc(e.id)+'" aria-label="Log '+esc(e.task)+' again today">'+ICONS.repeat+'Again</button>':'')+
     (e.photos&&e.photos.length?'<div class="row-thumbs">'+e.photos.map(function(id,i){return '<button class="rthumb" data-act="view-photo" data-id="'+esc(id)+'" aria-label="View '+esc(e.task)+' photo '+(i+1)+'">'+pimg(id)+'</button>'}).join("")+'</div>':'')+'</div>'+
     (e.cost?'<div class="cost">'+money(e.cost)+'</div>':'')+
-    (del&&e.kind!=="expense"?'<div class="again-col"><button class="btn mini again3" data-act="log-again" data-id="'+esc(e.id)+'" aria-label="Log '+esc(e.task)+' again today">'+ICONS.repeat+'Again</button></div>':'')+
+
     (del?'<div class="row-acts"><button class="btn small" data-act="edit-entry" data-id="'+esc(e.id)+'" aria-label="Edit '+esc(e.task)+' on '+esc(fmt(e.date))+'">Edit</button><button class="btn small ghost" data-act="del-entry" data-id="'+esc(e.id)+'" aria-label="Delete '+esc(e.task)+' on '+esc(fmt(e.date))+'">Delete</button></div>':'')+'</div>';
 }
 function lastProduct(task){var best=null;state.entries.forEach(function(e){if(e.task===task&&e.kind!=="expense"&&(!best||e.date>best.date))best=e});return best&&best.product?best.product:""}
@@ -1214,18 +1215,21 @@ function allPhotos(){
 function viewHome(){
   var t=todayISO(),last=lastDone("Mow"),big,sub,yr=t.slice(0,4);
   if(!last){big="Not Yet";sub="No mows logged yet"}
-  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" Days Ago";sub=parse(last).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}
+  var bigN="";
+  if(last){var n0=daysBetween(last,t);if(n0>1)bigN=String(n0)}
+  else{}
+  if(last){var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" Days Ago";sub=parse(last).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}
   var ms=state.schedules.find(function(x){return x.task==="Mow"}),next="";
   if(ms&&dueBase(ms)){var due=addDays(dueBase(ms),Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?(-dd)+" "+(dd===-1?"Day":"Days")+" Overdue":dd===0?"Next Mow: Today":dd===1?"Next Mow: Tomorrow":"Next Mow: "+fmtWeekday(due)}
   var sq=lawnSqft(),lf=lastDone("Fertilize"),spent=state.entries.reduce(function(a,e){return a+(e.date.slice(0,4)===yr&&e.cost>0?e.cost:0)},0);
   var fd=lf?daysBetween(lf,t):null,fertTxt=lf?(fd<=0?"Today":fd===1?"Yesterday":fd+" Days"):"Not Yet",fertNote=lf?(fd>1?"ago":"")+(lastProduct("Fertilize")?(fd>1?", ":"")+lastProduct("Fertilize"):""):"";
   var qm=state.entries.find(function(e){return e.task==="Mow"&&e.date===t&&e.quick});
-  var mowBtn=qm?'<button class="mow-btn done" data-act="undo-today" data-id="'+esc(qm.id)+'" aria-label="Undo today\u2019s mow">'+ICONS.mower+'<span>Undo</span></button>'
-    :'<button class="mow-btn" data-act="done-today" data-task="Mow" aria-label="Log a mow for today">'+ICONS.mower+'<span>Mowed Today</span></button>';
+  var mowBtn=qm?'<button class="mow-box done" data-act="undo-today" data-id="'+esc(qm.id)+'" aria-label="Undo today\u2019s mow">'+ICONS.mower+'<span>Undo</span></button>'
+    :'<button class="mow-box mow-btn" data-act="done-today" data-task="Mow" aria-label="Log a mow for today">'+ICONS.mower+'<span>Mowed<br>Today</span></button>';
   function tile(act,extra,label,value,note){return '<button class="hero-tile" data-act="'+act+'"'+extra+'><span class="ht-l">'+esc(label)+'</span><span class="ht-v">'+esc(value)+'</span>'+(note?'<span class="ht-n">'+esc(note)+'</span>':'')+'</button>'}
   var h='<header class="app-head"><span class="app-name">TurfDiary</span><span class="head-right"><span class="head-date">'+esc(parse(t).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))+'</span><button class="icon-btn" data-act="tab" data-tab="settings" aria-label="Settings">'+ICONS.gear+'</button></span></header>'+
-    '<section class="hero"><div class="hero-top"><span>Last Mow</span>'+mowBtn+'</div>'+
-    '<div class="big">'+esc(big)+'</div>'+(ms?'<div class="hero-row">'+(next?'<span class="hero-next'+(/Overdue/.test(next)?' late':'')+'">'+esc(next)+'</span>':'')+'</div>':'')+
+    '<section class="hero"><div class="hero-main"><div class="hero-left"><span class="hero-label">Last Mow</span>'+
+    '<div class="big">'+(bigN?'<span class="big-n">'+esc(bigN)+'</span><span class="big-u">Days Ago</span>':'<span class="big-w">'+esc(big)+'</span>')+'</div>'+(ms?'<div class="hero-row">'+(next?'<span class="hero-next'+(/Overdue/.test(next)?' late':'')+'">'+esc(next)+'</span>':'')+'</div>':'')+'</div>'+mowBtn+'</div>'+
     '<div class="hero-tiles">'+
       tile("tab",' data-tab="settings"',"Lawn",sq>0?fmtInt(sq):"Measure",sq>0?"sq ft":"Tap to Start")+
       tile("open-log",' data-task="Fertilize" aria-label="Log fertilizer. Last fertilized: '+esc(fertTxt+(fertNote?" "+fertNote:""))+'"',"Fertilized",fertTxt,fertNote)+
@@ -1316,7 +1320,7 @@ var ICONS={
 function viewProducts(){
   var seg='<div class="seg" role="tablist" aria-label="Products or soil tests"><button role="tab" data-act="prod-seg" data-v="products" aria-selected="'+(soilView!=="soil")+'">My Products</button><button role="tab" data-act="prod-seg" data-v="soil" aria-selected="'+(soilView==="soil")+'">Soil Tests'+(soilTests().length?' <span class="chip-sub">('+soilTests().length+')</span>':'')+'</button></div>';
   if(soilView==="soil")return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 10px"><button class="btn primary" data-act="soil-new">'+ICONS.plus+'Add Soil Test</button></div>'+soilListHTML();
-  return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 6px"><button class="btn primary" data-act="prod-new">'+ICONS.plus+'Add Product</button><button class="btn" data-act="scan-lookup">'+ICONS.barcode+'Scan Barcode</button></div>'+productsHTML();
+  return '<h1 class="page">Products</h1>'+seg+'<div class="btn-pair" style="margin:10px 0 14px"><button class="btn primary" data-act="prod-new">'+ICONS.plus+'Add Product</button><button class="btn" data-act="scan-lookup">'+ICONS.barcode+'Scan Barcode</button></div>'+productsHTML();
 }
 function openPlus(){
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet plus-sheet" role="dialog" aria-modal="true" aria-labelledby="plus-title"><h2 id="plus-title">Add</h2>'+
@@ -1784,6 +1788,7 @@ document.addEventListener("change",function(ev){
 });
 
 render();
+window.tdToast=setStatus;
 if(lockCfg)showLock();
 setTimeout(launchAction,350);
 document.addEventListener("visibilitychange",function(){if(!lockCfg)return;if(document.visibilityState==="hidden")hiddenAt=Date.now();else if(hiddenAt&&Date.now()-hiddenAt>60000&&!locked)showLock()});
