@@ -261,16 +261,19 @@ function ensureData(){if(!state.lawn||!Array.isArray(state.lawn.areas))state.law
 ensureData();
 function lawnSqft(zone){var l=state.lawn||{};if(!zone&&l.manual>0)return l.manual;return (l.areas||[]).reduce(function(t,a){return t+(!zone||a.name===zone?(a.sqft||0):0)},0)}
 function zones(){var l=state.lawn||{},out=[];if(l.manual>0)return out;(l.areas||[]).forEach(function(a){if(out.indexOf(a.name)<0)out.push(a.name)});return out}
-var sheetArea="";
-function areaSqft(){return sheetArea&&zones().indexOf(sheetArea)>=0?lawnSqft(sheetArea):lawnSqft()}
+var sheetAreas=[];
+function titleCase(t){return String(t||"").split(" ").map(function(w,i){return (w==="a"||w==="an")&&i>0?w:w.charAt(0).toUpperCase()+w.slice(1)}).join(" ")}
+function selAreas(){var zs=zones();return sheetAreas.filter(function(z){return zs.indexOf(z)>=0})}
+function areaSqft(){var a=selAreas();return a.length?a.reduce(function(t,z){return t+lawnSqft(z)},0):lawnSqft()}
+function areaLabel(list){list=list.map(titleCase);return list.length<3?list.join(" and "):list.slice(0,-1).join(", ")+" and "+list[list.length-1]}
 function amtShort(p,sq){if(!hasRate(p)||!(sq>0))return "";if(p.mode==="cover"){var b=sq/p.cover;return fmtAmt(b)+" "+pkgWord(p,b)}var a=p.rate*sq/1000;return fmtAmt(a)+" "+p.unit}
 function fmtInt(n){return Math.round(n).toLocaleString()}
 function fmtAmt(n){return n>=100?fmtInt(n):(Math.round(n*10)/10).toLocaleString()}
 function pkgWord(p,n){var liquid=/fl oz|gal|qt|ml/.test(pkgU(p)||"");return liquid?(n===1?"container":"containers"):(n===1?"bag":"bags")}
 function hasRate(p){return p.mode==="cover"?p.cover>0:p.rate>0}
-function prodSummary(p){
+function prodSummary(p,noSize){
   var t=!hasRate(p)?"No application rate saved":p.mode==="cover"?"1 "+pkgWord(p,1)+" covers "+fmtInt(p.cover)+" sq ft":(Math.round(p.rate*100)/100).toLocaleString()+" "+p.unit+" per 1,000 sq ft";
-  if(p.pkgSize)t+=", "+fmtAmt(p.pkgSize)+" "+pkgU(p)+" "+pkgWord(p,1);
+  if(p.pkgSize&&!noSize)t+=", "+fmtAmt(p.pkgSize)+" "+pkgU(p)+" "+pkgWord(p,1);
   if(p.price!=null)t+=", "+money(p.price)+" a "+pkgWord(p,1);
   return t;
 }
@@ -316,7 +319,7 @@ function findProduct(name){name=(name||"").trim().toLowerCase();if(!name)return 
 function calcHTML(name,target){
   var n=(name||"").trim();if(!n)return "";
   var p=findProduct(n);
-  if(p)return '<span class="calc-ok">'+esc(prodCalc(p,areaSqft()).replace("application for your ",sheetArea&&zones().indexOf(sheetArea)>=0?"application for your "+sheetArea.toLowerCase()+", ":"application for your "))+'</span><span class="calc-note">'+CALC_NOTE+'</span> <button type="button" class="link small" data-act="prod-edit" data-id="'+esc(p.id)+'">Edit product</button>'+costButtons(p,target||"f");
+  if(p)return '<span class="calc-ok">'+esc(prodCalc(p,areaSqft()).replace("application for your ",selAreas().length?"application for your "+areaLabel(selAreas())+", ":"application for your "))+'</span><span class="calc-note">'+CALC_NOTE+'</span> <button type="button" class="link small" data-act="prod-edit" data-id="'+esc(p.id)+'">Edit product</button>'+costButtons(p,target||"f");
   return '<button type="button" class="link small" data-act="prod-new" data-name="'+esc(n)+'" data-cat="'+esc(TASK_CAT[target&&target!=="f"?target:sheetTask]||"")+'">Save this product\u2019s rate</button> <span class="m">to calculate how much you need.</span>';
 }
 function updateCalc(input){
@@ -338,15 +341,15 @@ function openProduct(id,name,upc,cat,tpl,msg){
   prodEditId=p?p.id:null;prodMode=src&&src.mode?src.mode:"rate";
   var unitSel=function(v){return ["lb","oz","fl oz","ml","gal"].map(function(u){return '<option'+(u===(v||"lb")?' selected':'')+'>'+u+'</option>'}).join("")};
   sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="p-title"><h2 id="p-title">'+(p?"Edit Product":"Save a Product")+'</h2>'+(msg?'<p class="p-banner">'+esc(msg)+'</p>':'')+
-    '<label class="field">Category<select id="p-cat">'+CATS.map(function(c){return '<option'+(c===(src?prodCat(src):(catPrefill||"Fertilizer"))?' selected':'')+'>'+c+'</option>'}).join("")+'</select></label>'+
+    '<label class="field">Category<select id="p-cat">'+CATS.map(function(c){return '<option'+(c===(src?prodCat(src):(catPrefill||"Fertilizer"))?' selected':'')+' value="'+c+'">'+titleCase(c)+'</option>'}).join("")+'</select></label>'+
     '<label class="field">Product name<input type="text" id="p-name" maxlength="80" autocapitalize="words" data-act="cap-words" value="'+esc(src?src.name:(name||""))+'" placeholder="e.g. LESCO Dimension 19-0-7"></label>'+
     '<fieldset><legend>How does the label list it?</legend><div class="chips"><button type="button" class="chip" data-act="prod-mode" data-mode="rate" aria-pressed="'+(prodMode==="rate")+'">Amount per 1,000 sq ft</button><button type="button" class="chip" data-act="prod-mode" data-mode="cover" aria-pressed="'+(prodMode==="cover")+'">One bag covers an area</button></div></fieldset>'+
-    '<div id="p-rate"'+(prodMode==="rate"?'':' hidden')+'><label class="field">Apply this much per 1,000 sq ft (optional)<div class="unit-row"><input type="number" id="p-rate-n" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.rate||"")+'" placeholder="e.g. 3.85"><select id="p-unit" aria-label="Unit">'+unitSel(src&&src.unit)+'</select></div></label></div>'+
-    '<div id="p-cover"'+(prodMode==="cover"?'':' hidden')+'><label class="field">One bag or container covers (sq ft, optional)<input type="number" id="p-cover-n" inputmode="numeric" min="1" value="'+esc(src&&src.cover||"")+'" placeholder="e.g. 5000"></label></div>'+
-    '<label class="field">Bag or container size (optional)<div class="unit-row"><input type="number" id="p-pkg" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.pkgSize||"")+'" placeholder="e.g. 50"><select id="p-unit2" aria-label="Unit">'+unitSel(src&&pkgU(src))+'</select></div></label>'+
-    '<label class="field">Price per bag or container (optional)<div class="unit-row"><span class="dollar">$</span><input type="number" id="p-price" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.price!=null?src.price:"")+'" placeholder="e.g. 57.94"></div></label>'+
-    '<label class="field">Barcode (UPC, optional)<div class="unit-row"><input type="text" id="p-upc" inputmode="numeric" maxlength="24" value="'+esc(src&&src.upc||upcPrefill||"")+'" placeholder="Scan or type the number under the barcode"><button type="button" class="btn small" data-act="scan-into-product">Scan</button></div></label>'+
-    '<div id="p-spread-wrap"><label class="field">Spreader setting (optional)<input type="text" id="p-spread" maxlength="40" value="'+esc(src&&src.spreader||"")+'" placeholder="e.g. 3.5 on my rotary spreader"></label></div>'+
+    '<div id="p-rate"'+(prodMode==="rate"?'':' hidden')+'><label class="field">Apply this much per 1,000 sq ft<div class="unit-row"><input type="number" id="p-rate-n" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.rate||"")+'" placeholder="e.g. 3.85"><select id="p-unit" aria-label="Unit">'+unitSel(src&&src.unit)+'</select></div></label></div>'+
+    '<div id="p-cover"'+(prodMode==="cover"?'':' hidden')+'><label class="field">One bag or container covers (sq ft)<input type="number" id="p-cover-n" inputmode="numeric" min="1" value="'+esc(src&&src.cover||"")+'" placeholder="e.g. 5000"></label></div>'+
+    '<label class="field">Bag or container size<div class="unit-row"><input type="number" id="p-pkg" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.pkgSize||"")+'" placeholder="e.g. 50"><select id="p-unit2" aria-label="Unit">'+unitSel(src&&pkgU(src))+'</select></div></label>'+
+    '<label class="field">Price per bag or container<div class="unit-row"><span class="dollar">$</span><input type="number" id="p-price" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.price!=null?src.price:"")+'" placeholder="e.g. 57.94"></div></label>'+
+    '<label class="field">Barcode (UPC)<div class="unit-row"><input type="text" id="p-upc" inputmode="numeric" maxlength="24" value="'+esc(src&&src.upc||upcPrefill||"")+'" placeholder="Scan or type the number under the barcode"><button type="button" class="btn small" data-act="scan-into-product">Scan</button></div></label>'+
+    '<div id="p-spread-wrap"><label class="field">Spreader setting<input type="text" id="p-spread" maxlength="40" value="'+esc(src&&src.spreader||"")+'" placeholder="e.g. 3.5 on my rotary spreader"></label></div>'+
     '<p class="err" id="p-err" role="alert"></p><div class="actions" id="p-actions">'+prodActionsHTML(!!p)+'</div></div>';
   syncSpreader();
   var f=document.getElementById("p-name");if(f&&!f.value)f.focus();
@@ -394,7 +397,7 @@ function lawnHTML(){
   var l=state.lawn,sq=lawnSqft(),h='<div class="settings-block" id="lawn-block">';
   if(sq>0)h+='<p class="lawn-total">'+fmtInt(sq)+' <span>sq ft of lawn'+(l.manual>0?' (entered by hand)':'')+'</span></p>';
   else h+='<p>Trace your lawn on an aerial photo to get its size. TurfDiary then works out how much product you need.</p>';
-  if(!(l.manual>0)&&l.areas.length)h+=zones().map(function(z){var idx=[];l.areas.forEach(function(a,i){if(a.name===z)idx.push(i)});return (idx.length>1?'<div class="zone-h"><b>'+esc(z)+'</b><span>'+fmtInt(lawnSqft(z))+' sq ft total</span></div>':'')+'<div class="list" style="margin-bottom:10px">'+idx.map(function(i){var a=l.areas[i];return '<div class="item"><div class="grow"><div class="t">'+(idx.length>1?esc(z)+' '+(idx.indexOf(i)+1):esc(z))+'</div><div class="m">'+fmtInt(a.sqft)+' sq ft</div></div><div class="row-acts"><button class="btn mini" data-act="lawn-rename" data-i="'+i+'">Rename</button><button class="btn mini ghost" data-act="lawn-del" data-i="'+i+'">Remove</button></div></div>'}).join("")+'</div>'}).join("");
+  if(!(l.manual>0)&&l.areas.length)h+=zones().map(function(z){var idx=[];l.areas.forEach(function(a,i){if(a.name===z)idx.push(i)});return (idx.length>1?'<div class="zone-h"><b>'+esc(titleCase(z))+'</b><span>'+fmtInt(lawnSqft(z))+' sq ft total</span></div>':'')+'<div class="list" style="margin-bottom:10px">'+idx.map(function(i){var a=l.areas[i];return '<div class="item"><div class="grow"><div class="t">'+(idx.length>1?esc(titleCase(z))+' '+(idx.indexOf(i)+1):esc(titleCase(z)))+'</div><div class="m">'+fmtInt(a.sqft)+' sq ft</div></div><div class="row-acts"><button class="btn mini" data-act="lawn-rename" data-i="'+i+'">Rename</button><button class="btn mini ghost" data-act="lawn-del" data-i="'+i+'">Remove</button></div></div>'}).join("")+'</div>'}).join("");
   h+='<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="lawn-map">'+(l.areas.length?"Edit On Map":"Measure On Map")+'</button><button class="btn" data-act="lawn-manual">Enter Size By Hand</button></div>';
   h+='<p class="src">Aerial imagery: USGS The National Map and USDA NAIP (public domain). Photos may be a year or two old, and trees can hide parts of the lawn, so treat the size as an estimate.</p></div>';
   return h;
@@ -413,11 +416,20 @@ function suggestNames(task){
   return out;
 }
 function dlOptions(task){return suggestNames(task).map(function(n){return '<option value="'+esc(n)+'">'}).join("")}
+function needText(p,sq){
+  if(p.mode==="cover"&&p.cover>0){var b=sq/p.cover;if(p.pkgSize)return fmtAmt(b*p.pkgSize)+" "+pkgU(p);return ""+(b<1?fmtAmt(b)+" of a "+pkgWord(p,1):fmtAmt(b)+" "+pkgWord(p,b))+(p.pkgSize?" ("+fmtAmt(b*p.pkgSize)+" "+pkgU(p)+")":"")}
+  var amt=p.rate*sq/1000;return fmtAmt(amt)+" "+p.unit;
+}
+function needsHTML(p){
+  if(!hasRate(p))return '<div class="m">No application rate saved yet.</div>';
+  var zs=zones(),rows=[["Whole Yard",lawnSqft()]].concat(zs.length>1?zs.map(function(z){return[z,lawnSqft(z)]}):[]);
+  return '<div class="needs"><div class="needs-h">Per application</div>'+rows.map(function(r){return '<div class="need-row"><span>'+esc(titleCase(r[0]))+'</span><b>'+esc(needText(p,r[1]))+'</b></div>'}).join("")+(p.spreader?'<div class="need-row"><span>Spreader setting</span><b>'+esc(p.spreader)+'</b></div>':'')+'</div>';
+}
 function productsHTML(){
   var sq=lawnSqft();
   if(!state.products.length)return '<div class="settings-block"><p>Save each product\u2019s rate once, from its label. When you log work with that product, TurfDiary shows how much you need for your lawn.</p></div>';
-  var h='<div class="prod-groups">'+(sq>0?'<p class="calc-note" style="margin:0 0 10px">Amounts are suggestions based on the label rates you entered. Always follow the product label.</p>':'<p class="note"><button class="link" data-act="tab" data-tab="settings">Measure your lawn in Settings</button> to see how much of each product you need.</p>');
-  h+=CATS.filter(function(c){return state.products.some(function(p){return prodCat(p)===c})}).map(function(c){var ps=state.products.filter(function(p){return prodCat(p)===c});return '<h3 class="cat-h">'+esc(c)+' <span>'+ps.length+'</span></h3><div class="list">'+ps.map(function(p){return '<div class="item"><div class="grow"><div class="t">'+esc(p.name)+'</div><div class="m">'+esc(prodSummary(p))+'</div>'+(sq>0?'<div class="calc-ok small">'+esc(prodCalc(p,sq))+'</div>':'')+(sq>0&&hasRate(p)&&zones().length>1?'<div class="zone-amts">'+zones().map(function(z){return '<span><b>'+esc(z)+':</b> '+esc(amtShort(p,lawnSqft(z)))+'</span>'}).join("")+'</div>':'')+'</div><div class="row-acts"><button class="btn small" data-act="prod-edit" data-id="'+esc(p.id)+'" aria-label="Edit '+esc(p.name)+'">Edit</button><button class="btn small ghost" data-act="prod-del-ask" data-id="'+esc(p.id)+'" aria-label="Delete '+esc(p.name)+'">Delete</button></div></div>'}).join("")+'</div>'}).join("");
+  var h='<div class="prod-groups">'+(sq>0?'<p class="calc-note" style="margin:0 0 10px">Amounts are suggestions based on the label rates you entered. Always follow the product label. TurfDiary is not liable for any under- or over-application of products.</p>':'<p class="note"><button class="link" data-act="tab" data-tab="settings">Measure your lawn in Settings</button> to see how much of each product you need.</p>');
+  h+=CATS.filter(function(c){return state.products.some(function(p){return prodCat(p)===c})}).map(function(c){var ps=state.products.filter(function(p){return prodCat(p)===c});return '<h3 class="cat-h">'+esc(c)+' <span>('+ps.length+')</span></h3><div class="list">'+ps.map(function(p){return '<div class="item"><div class="grow"><div class="t">'+esc(p.name)+'</div><div class="m">'+esc(prodSummary(p,true))+'</div>'+'</div><div class="row-acts"><button class="btn small" data-act="prod-edit" data-id="'+esc(p.id)+'" aria-label="Edit '+esc(p.name)+'">Edit</button><button class="btn small ghost" data-act="prod-del-ask" data-id="'+esc(p.id)+'" aria-label="Delete '+esc(p.name)+'">Delete</button></div>'+(sq>0?needsHTML(p):'')+'</div>'}).join("")+'</div>'}).join("");
   return h+'</div>';
 }
 function openManualLawn(){
@@ -545,7 +557,7 @@ function showMapIntro(){
 }
 function showNameBar(){
   var n=document.getElementById("map-name"),last=MAP.lastName||"";
-  var opts=["Front yard","Back yard","Side yard"];zones().concat(MAP.done.map(function(a){return a.name})).forEach(function(z){if(opts.indexOf(z)<0)opts.push(z)});
+  var opts=["Front Yard","Back Yard","Side Yard"];zones().concat(MAP.done.map(function(a){return a.name})).forEach(function(z){if(opts.indexOf(z)<0)opts.push(z)});
   n.hidden=false;
   n.innerHTML='<b>Which part of your yard is this?</b><div class="chips">'+opts.map(function(o){return '<button type="button" class="chip'+(o===last?' sel':'')+'" data-act="map-name" data-name="'+esc(o)+'">'+esc(o)+'</button>'}).join("")+'</div>'+
     '<div class="unit-row"><input type="text" id="map-name-in" maxlength="30" placeholder="Or type a name, like Side strip" autocapitalize="words"><button class="btn small primary" data-act="map-name-custom">Use</button></div>'+
@@ -637,13 +649,13 @@ function upcomingNotifications(){
   var hm=(n.time||"08:00").split(":"),now=Date.now();
   state.schedules.forEach(function(s,i){
     if(!notifyTaskOn(s.task))return;
-    var last=lastDone(s.task);if(!last)return;
-    var due=addDays(last,Math.max(1,+s.every||7)),fire=n.lead==="before"?addDays(due,-1):due;
+    var last=lastDone(s.task),base=dueBase(s);if(!base)return;
+    var due=addDays(base,Math.max(1,+s.every||7)),fire=n.lead==="before"?addDays(due,-1):due;
     var d=parse(fire);d.setHours(+hm[0]||8,+hm[1]||0,0,0);
     if(d.getTime()<=now)return;
     var lp=lastProduct(s.task);
     out.push({id:1000+i,at:d,title:"TurfDiary: "+s.task+(n.lead==="before"?" is due tomorrow":" is due today"),
-      body:"Last done "+fmt(last)+(lp?" with "+lp:"")+". Every "+s.every+" "+pl(+s.every,"day")+"."});
+      body:(last?"Last done "+fmt(last)+(lp?" with "+lp:"")+". ":"")+"Every "+s.every+" "+pl(+s.every,"day")+"."});
   });
   return out;
 }
@@ -773,7 +785,7 @@ function rcFile(file){
   msg.style.color="var(--muted)";msg.textContent="Reading your receipt\u2026 The first scan downloads the text reader, so it can take a little longer.";
   var pid="p_"+uid(),isPdf=/pdf/i.test(file.type||"")||/\.pdf$/i.test(file.name||"");
   (isPdf?pdfToImage(file):Promise.resolve(file)).then(function(f){return shrink(f)}).then(function(b){return photoPut(pid,b).then(function(){RC.photo=pid;newUploads.push(pid);return ocrReceipt(b,function(p){msg.textContent="Reading your receipt\u2026 "+Math.round(p*100)+"%"})})})
-  .then(function(text){var d=parseReceipt(text);if(!d.items.length&&d.total==null){msg.style.color="";msg.textContent="Couldn\u2019t find any prices. Try a flatter, brighter photo, or add the expense by hand.";return}RC.data=d;RC.rows=d.items.map(function(it){var m=rcMatch(it);return{it:it,pid:m?m.p.id:"__supplies",how:m?m.how:"",upd:true}});showReceipt()})
+  .then(function(text){var d=parseReceipt(text);if(!d.items.length&&d.total==null){msg.style.color="";msg.textContent="Couldn\u2019t find any prices. Try a flatter, brighter photo, or add the expense by hand.";return}d.store=cleanStore(d.store);RC.data=d;RC.rows=d.items.map(function(it){var m=rcMatch(it);return{it:it,pid:m?m.p.id:"__supplies",how:m?m.how:"",upd:true}});showReceipt()})
   .catch(function(){msg.style.color="";msg.textContent="Couldn\u2019t read the receipt. Check your connection the first time you scan, then try again."});
 }
 function showReceipt(){
@@ -782,7 +794,7 @@ function showReceipt(){
     CATS.filter(function(c){return state.products.some(function(p){return prodCat(p)===c})}).map(function(c){return '<optgroup label="'+esc(c)+'">'+state.products.filter(function(p){return prodCat(p)===c}).map(function(p){return '<option value="'+esc(p.id)+'"'+(sel===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join("")+'</optgroup>'}).join("")};
   var matched=RC.rows.filter(function(r){return r.how}).length;
   var h='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rc-title"><h2 id="rc-title">Review your receipt</h2>'+
-    '<div class="rc-head"><div><b>'+esc(d.store||"Receipt")+'</b><span>'+esc(d.date?fmtLong(d.date):"Date not found, using today")+'</span></div>'+(d.total!=null?'<div class="rc-total">'+money(d.total)+'<span>total</span></div>':'')+'</div>'+
+    '<div class="rc-head"><div><label class="rc-store">Store<input type="text" id="rc-store" maxlength="40" value="'+esc(d.store||"")+'" placeholder="Store name"></label><span>'+esc(d.date?fmtLong(d.date):"Date not found, using today")+'</span></div>'+(d.total!=null?'<div class="rc-total">'+money(d.total)+'<span>total</span></div>':'')+'</div>'+
     '<p class="m" style="margin:8px 0 10px">'+(matched?matched+' of '+RC.rows.length+' '+pl(RC.rows.length,"line")+' matched to your products. ':'')+'Check each line, then save. Lines you match by hand are remembered for next time.</p>'+
     '<div class="rc-list">'+RC.rows.map(function(r,i){
       var p=state.products.find(function(x){return x.id===r.pid});
@@ -798,6 +810,7 @@ function showReceipt(){
   document.getElementById("sheet").innerHTML=h;
 }
 function rcSave(totalOnly){
+  var se=document.getElementById("rc-store");if(se)RC.data.store=se.value.trim().slice(0,40);
   var d=RC.data,date=d.date||todayISO(),photos=RC.photo?[RC.photo]:[],n=0;
   if(!state.receiptAliases)state.receiptAliases={};
   if(totalOnly){state.entries.push({id:uid(),kind:"expense",date:date,task:"Other supplies",cost:Math.round(d.total*100)/100,product:"",note:"Receipt total",store:d.store,photos:photos});n=1}
@@ -815,6 +828,7 @@ function rcSave(totalOnly){
   newUploads=[];closeSheet();
   if(!n){setStatus("Nothing to save");return}
   persist();setStatus(n+" "+pl(n,"expense")+" saved from your receipt");
+  if(!totalOnly){var newOnes=RC.rows.filter(function(r){return r.pid==="__supplies"}).map(function(r){var lbl=r.it.label;return{name:lbl===lbl.toUpperCase()?titleCase(lbl.toLowerCase()):lbl,cat:"Other supplies",price:r.it.unit||r.it.price,upc:r.it.upc}});if(newOnes.length)setTimeout(function(){promptNewProducts(newOnes)},300)}
 }
 
 /* ---------- quicker logging helpers ---------- */
@@ -836,7 +850,7 @@ function updateMoreSum(){
   if(fs&&fs.value)parts.push("soil "+fs.value+"\u00b0");
   if(formPhotos.length)parts.push(formPhotos.length+" "+pl(formPhotos.length,"photo"));
   if(fn&&fn.value.trim())parts.push("note");
-  el.textContent=parts.length?": "+parts.join(", "):" (cost, photos, notes)";
+  el.textContent=parts.length?": "+parts.join(", "):" (optional)";
 }
 
 /* ---------- first-time setup ---------- */
@@ -1004,7 +1018,7 @@ function pdfToImage(blob){
     return pg.render({canvasContext:ctx,viewport:vp}).promise.then(function(){return new Promise(function(ok){c.toBlob(ok,"image/jpeg",0.92)})});
   });
 }
-function nextDue(s){var t=todayISO(),last=lastDone(s.task),every=Math.max(1,+s.every||7),d=last?addDays(last,every):t;return d<t?t:d}
+function nextDue(s){var t=todayISO(),last=dueBase(s),every=Math.max(1,+s.every||7),d=last?addDays(last,every):t;return d<t?t:d}
 function gcalUrl(s){
   var d=nextDue(s).replace(/-/g,""),e=addDays(nextDue(s),1).replace(/-/g,"");
   return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent("TurfDiary: "+s.task)+"&dates="+d+"/"+e+
@@ -1056,7 +1070,7 @@ function openSoilForm(id){
     '<p class="note">Fill in only what\u2019s printed on your report. Empty boxes are left off.</p>'+
     '<div class="two-col"><label class="field">Date sampled<input type="date" id="st-date" value="'+esc(t?t.date:todayISO())+'"></label>'+
     '<label class="field">Lab (optional)<input type="text" id="st-lab" maxlength="40" autocapitalize="words" value="'+esc(t&&t.lab||"")+'" placeholder="e.g. UT Soil Lab"></label></div>'+
-    (zs.length?'<label class="field">Part of the yard<select id="st-area"><option value="">Whole lawn</option>'+zs.map(function(z){return '<option'+(t&&t.area===z?' selected':'')+'>'+esc(z)+'</option>'}).join("")+'</select></label>':'')+
+    (zs.length?'<label class="field">Part of the yard<select id="st-area"><option value="">Whole Lawn</option>'+zs.map(function(z){return '<option'+(t&&t.area===z?' selected':'')+' value="'+esc(z)+'">'+esc(titleCase(z))+'</option>'}).join("")+'</select></label>':'')+
     '<div class="field" style="margin-bottom:10px">Photo of the report (optional)<div class="thumbs" id="st-photos"></div></div>'+
     '<label class="field">Nutrient units on your report<select id="st-unit"><option value="ppm"'+(!t||t.unit!=="lb/acre"?' selected':'')+'>ppm (parts per million)</option><option value="lb/acre"'+(t&&t.unit==="lb/acre"?' selected':'')+'>lb/acre</option></select></label>';
   groups.forEach(function(g){
@@ -1140,7 +1154,7 @@ function fillLogProduct(p){
     var mf=document.getElementById("multi-fields");if(mf)mf.innerHTML="";renderTaskFields();
   }else{
     var fi=document.getElementById("f-product");fi.value=p.name;fi.dataset.auto="";var an=document.getElementById("auto-note");if(an)an.innerHTML="";
-    var fc=document.getElementById("f-cost");if(fc&&(!fc.value||fc.dataset.auto==="1")){var g=costGuess(sheetTasks[0],p.name);fc.value=g!=null?g:"";fc.dataset.auto=g!=null?"1":""}
+    var fc=document.getElementById("f-cost");if(fc&&(!fc.value||fc.dataset.auto==="1")){var g=sheetMode==="expense"?(p.price!=null?p.price:null):costGuess(sheetTasks[0],p.name);fc.value=g!=null?g:"";fc.dataset.auto=g!=null?"1":""}
     updateCalc(fi);updateMoreSum();
   }
   setStatus(typeof added!=="undefined"&&added?"Added "+added+" for "+p.name:"Scanned: "+p.name);
@@ -1156,7 +1170,7 @@ function logScanResult(code){
 /* ---------- views ---------- */
 function ordinal(n){var s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])}
 function tally(e){
-  if(e.kind==="expense")return "Purchase"+(e.store?" at "+e.store:"");
+  if(e.kind==="expense")return "Purchase"+(e.store?" at "+cleanStore(e.store):"");
   var y=e.date.slice(0,4),idx=state.entries.indexOf(e),n=0,spent=0;
   state.entries.forEach(function(x,i){
     if(x.task!==e.task||x.date.slice(0,4)!==y||x.kind==="expense")return;
@@ -1167,25 +1181,27 @@ function tally(e){
 function entryRow(e,del){
   var d=parse(e.date);
   return '<div class="item"><div class="date"><span>'+d.getDate()+'</span><small>'+esc(d.toLocaleDateString(undefined,{month:"short"}))+'</small></div>'+
-    '<div class="grow"><div class="t task-name">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.area?'<div class="m">Area: '+esc(e.area)+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.weather?'<div class="m">Weather: '+esc(e.weather)+'</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+(del&&e.kind!=="expense"?'<button class="btn mini again" data-act="log-again" data-id="'+esc(e.id)+'">Log Again Today</button>':'')+
+    '<div class="grow"><div class="t task-name">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.area?'<div class="m">Area: '+esc(e.areas?areaLabel(e.areas):titleCase(e.area))+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.weather?'<div class="m">Weather: '+esc(e.weather)+'</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+
     (e.photos&&e.photos.length?'<div class="row-thumbs">'+e.photos.map(function(id,i){return '<button class="rthumb" data-act="view-photo" data-id="'+esc(id)+'" aria-label="View '+esc(e.task)+' photo '+(i+1)+'">'+pimg(id)+'</button>'}).join("")+'</div>':'')+'</div>'+
     (e.cost?'<div class="cost">'+money(e.cost)+'</div>':'')+
+    (del&&e.kind!=="expense"?'<div class="again-col"><button class="btn mini again3" data-act="log-again" data-id="'+esc(e.id)+'" aria-label="Log '+esc(e.task)+' again today">'+ICONS.repeat+'Again</button></div>':'')+
     (del?'<div class="row-acts"><button class="btn small" data-act="edit-entry" data-id="'+esc(e.id)+'" aria-label="Edit '+esc(e.task)+' on '+esc(fmt(e.date))+'">Edit</button><button class="btn small ghost" data-act="del-entry" data-id="'+esc(e.id)+'" aria-label="Delete '+esc(e.task)+' on '+esc(fmt(e.date))+'">Delete</button></div>':'')+'</div>';
 }
 function lastProduct(task){var best=null;state.entries.forEach(function(e){if(e.task===task&&e.kind!=="expense"&&(!best||e.date>best.date))best=e});return best&&best.product?best.product:""}
+function dueBase(s){var last=lastDone(s.task),sk=s.skip&&s.skip.base;return sk&&(!last||sk>last)?sk:last}
 function dueItems(){
   var t=todayISO();
   return state.schedules.map(function(s){
-    var every=Math.max(1,+s.every||7),last=lastDone(s.task),diff,label,cls="",meta;
-    if(!last){diff=-1e9;label="Not Logged Yet";cls="soon";meta="Every "+every+" "+pl(every,"day")}
+    var every=Math.max(1,+s.every||7),last=lastDone(s.task),base=dueBase(s),diff,label,cls="",meta;
+    if(!base){diff=-1e9;label="Not Logged Yet";cls="soon";meta="Every "+every+" "+pl(every,"day")}
     else{
-      var due=addDays(last,every);diff=daysBetween(t,due);
+      var due=addDays(base,every);diff=daysBetween(t,due);
       if(diff<0){label=(-diff)+" "+(diff===-1?"Day":"Days")+" Overdue";cls="over"}
       else if(diff===0){label="Due Today";cls="over"}
       else if(diff<=2){label="Due In "+diff+" "+(diff===1?"Day":"Days");cls="soon"}
       else label="Due "+fmtWeekday(due);
       var lp=lastProduct(s.task);
-      meta="Every "+every+" "+pl(every,"day")+", last done "+fmt(last)+(lp?" with "+lp:"");
+      meta="Every "+every+" "+pl(every,"day")+(last?", last done "+fmt(last)+(lp?" with "+lp:""):"")+(base!==last?" (skipped once)":"");
     }
     return{task:s.task,diff:diff,label:label,cls:cls,meta:meta};
   });
@@ -1200,16 +1216,16 @@ function viewHome(){
   if(!last){big="Not Yet";sub="No mows logged yet"}
   else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" Days Ago";sub=parse(last).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}
   var ms=state.schedules.find(function(x){return x.task==="Mow"}),next="";
-  if(ms&&last){var due=addDays(last,Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?(-dd)+" "+(dd===-1?"Day":"Days")+" Overdue":dd===0?"Next Mow: Today":dd===1?"Next Mow: Tomorrow":"Next Mow: "+fmtWeekday(due)}
+  if(ms&&dueBase(ms)){var due=addDays(dueBase(ms),Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?(-dd)+" "+(dd===-1?"Day":"Days")+" Overdue":dd===0?"Next Mow: Today":dd===1?"Next Mow: Tomorrow":"Next Mow: "+fmtWeekday(due)}
   var sq=lawnSqft(),lf=lastDone("Fertilize"),spent=state.entries.reduce(function(a,e){return a+(e.date.slice(0,4)===yr&&e.cost>0?e.cost:0)},0);
   var fd=lf?daysBetween(lf,t):null,fertTxt=lf?(fd<=0?"Today":fd===1?"Yesterday":fd+" Days"):"Not Yet",fertNote=lf?(fd>1?"ago":"")+(lastProduct("Fertilize")?(fd>1?", ":"")+lastProduct("Fertilize"):""):"";
   var qm=state.entries.find(function(e){return e.task==="Mow"&&e.date===t&&e.quick});
   var mowBtn=qm?'<button class="mow-btn done" data-act="undo-today" data-id="'+esc(qm.id)+'" aria-label="Undo today\u2019s mow">'+ICONS.mower+'<span>Undo</span></button>'
     :'<button class="mow-btn" data-act="done-today" data-task="Mow" aria-label="Log a mow for today">'+ICONS.mower+'<span>Mowed Today</span></button>';
   function tile(act,extra,label,value,note){return '<button class="hero-tile" data-act="'+act+'"'+extra+'><span class="ht-l">'+esc(label)+'</span><span class="ht-v">'+esc(value)+'</span>'+(note?'<span class="ht-n">'+esc(note)+'</span>':'')+'</button>'}
-  var h='<header class="app-head"><span class="app-name">TurfDiary</span><button class="icon-btn" data-act="tab" data-tab="settings" aria-label="Settings">'+ICONS.gear+'</button></header>'+
+  var h='<header class="app-head"><span class="app-name">TurfDiary</span><span class="head-right"><span class="head-date">'+esc(parse(t).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))+'</span><button class="icon-btn" data-act="tab" data-tab="settings" aria-label="Settings">'+ICONS.gear+'</button></span></header>'+
     '<section class="hero"><div class="hero-top"><span>Last Mow</span>'+mowBtn+'</div>'+
-    '<div class="big">'+esc(big)+'</div><div class="hero-row"><span class="hero-sub">'+esc(sub)+'</span>'+(next?'<span class="hero-next'+(/overdue/.test(next)?' late':'')+'">'+esc(next)+'</span>':'')+'</div>'+
+    '<div class="big">'+esc(big)+'</div>'+(ms?'<div class="hero-row">'+(next?'<span class="hero-next'+(/Overdue/.test(next)?' late':'')+'">'+esc(next)+'</span>':'')+'</div>':'')+
     '<div class="hero-tiles">'+
       tile("tab",' data-tab="settings"',"Lawn",sq>0?fmtInt(sq):"Measure",sq>0?"sq ft":"Tap to Start")+
       tile("open-log",' data-task="Fertilize" aria-label="Log fertilizer. Last fertilized: '+esc(fertTxt+(fertNote?" "+fertNote:""))+'"',"Fertilized",fertTxt,fertNote)+
@@ -1223,7 +1239,9 @@ function viewHome(){
   else h+='<div class="list">'+items.map(function(it){
     return '<div class="item"><button class="grow due-open" data-act="open-log" data-task="'+esc(it.task)+'" aria-label="Log '+esc(it.task)+' with details"><div class="t task-name">'+esc(it.task)+' <span class="chev" aria-hidden="true">\u203A</span></div><div class="s '+it.cls+'">'+esc(it.label)+'</div><div class="m">'+esc(it.meta)+'</div></button>'+
       (function(){var q=state.entries.find(function(e){return e.task===it.task&&e.date===todayISO()&&e.quick});
-        return q?'<button class="btn small ghost" data-act="undo-today" data-id="'+esc(q.id)+'" aria-label="Undo '+esc(it.task)+' logged today">Undo</button>':'<button class="btn small" data-act="done-today" data-task="'+esc(it.task)+'">Done Today</button>'})()+'</div>';
+        var sc=state.schedules.find(function(x){return x.task===it.task}),skipped=sc&&sc.skip&&sc.skip.on===todayISO();
+        return '<div class="row-acts">'+(q?'<button class="btn small ghost" data-act="undo-today" data-id="'+esc(q.id)+'" aria-label="Undo '+esc(it.task)+' logged today">Undo</button>':'<button class="btn small" data-act="done-today" data-task="'+esc(it.task)+'">Done Today</button>')+
+          (q?'':skipped?'<button class="btn small ghost" data-act="unskip" data-task="'+esc(it.task)+'">Undo Skip</button>':'<button class="btn small ghost" data-act="skip-due" data-task="'+esc(it.task)+'" aria-label="Skip '+esc(it.task)+' this time">Skip</button>')+'</div>'})()+'</div>';
   }).join("")+'</div>';
   h+='<div class="sec-head"><h2>Recent</h2>'+(state.entries.length?'<button class="btn mini" data-act="tab" data-tab="history">See Full Diary</button>':'')+'</div>';
   var rec=sorted().slice(0,4);
@@ -1247,8 +1265,8 @@ function viewSpend(){
   var ye=state.entries.filter(function(e){return e.cost>0&&+e.date.slice(0,4)===spendYear});
   var total=0,months=[0,0,0,0,0,0,0,0,0,0,0,0],byTask={};
   ye.forEach(function(e){total+=e.cost;months[+e.date.slice(5,7)-1]+=e.cost;byTask[e.task]=(byTask[e.task]||0)+e.cost});
-  var h='<h1 class="page">Spending</h1><div class="toolbar" style="margin-bottom:14px"><select data-act="spend-year" aria-label="Year">'+
-    years.map(function(y){return '<option'+(y===spendYear?' selected':'')+'>'+y+'</option>'}).join("")+'</select><button class="btn primary" data-act="add-expense">Add Expense</button><button class="btn" data-act="rc-open">Scan Receipt</button></div>';
+  var h='<h1 class="page">Spending</h1><div class="toolbar" style="margin-bottom:10px"><select data-act="spend-year" aria-label="Year">'+
+    years.map(function(y){return '<option'+(y===spendYear?' selected':'')+'>'+y+'</option>'}).join("")+'</select></div><div class="btn-pair"><button class="btn primary" data-act="add-expense">'+ICONS.plus+'Add Expense</button><button class="btn" data-act="rc-open">'+ICONS.receipt+'Scan Receipt</button></div>';
   if(!ye.length)return h+'<p class="empty">No costs logged in '+spendYear+'. Tap Add Expense, or add a cost when you log work.</p>';
   var second=spendYear===cy?{v:months[new Date().getMonth()],l:"This month"}:{v:total/12,l:"Average per month"};
   h+='<div class="stats"><div class="stat"><b>'+money(total)+'</b><span>Total in '+spendYear+'</span></div><div class="stat"><b>'+money(second.v)+'</b><span>'+second.l+'</span></div></div>';
@@ -1290,14 +1308,15 @@ var ICONS={
   finger:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 11v3a6 6 0 0 1-1 3.3"/><path d="M8.5 9.5A3.5 3.5 0 0 1 15.5 10v2.5c0 2-.4 3.8-1.2 5.5"/><path d="M6 13.5V10a6 6 0 0 1 11.6-2"/><path d="M18 11.5V13c0 1.6-.2 3.1-.6 4.5"/><path d="M5 17c.6-1 1-2.2 1-3.5"/></svg>',
   calendar:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M12 14h2M16 14h0"/></svg>',
   barcode:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12M7 6v12M10 6v12M13 6v12M17 6v12M20 6v12"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3l3 3-3 3"/><path d="M4 12V10a4 4 0 0 1 4-4h12"/><path d="M7 21l-3-3 3-3"/><path d="M20 12v2a4 4 0 0 1-4 4H4"/></svg>',
   plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   receipt:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
   mower:'<svg viewBox="0 0 32 24" aria-hidden="true"><path d="M17 12.5L27 2.5"/><path d="M25 1.5l3.5 3.5"/><path d="M3.5 17.5v-3.2a2 2 0 0 1 2-2H19l2.5 3v2.2"/><path d="M9 12.3V9.8h6v2.5"/><circle cx="7" cy="19" r="2.6"/><circle cx="18.5" cy="19" r="2.6"/><path d="M9.6 19h6.3"/><path d="M1.5 22.5h29" stroke-dasharray="1.5 2"/></svg>'
 };
 function viewProducts(){
-  var seg='<div class="seg" role="tablist" aria-label="Products or soil tests"><button role="tab" data-act="prod-seg" data-v="products" aria-selected="'+(soilView!=="soil")+'">My products</button><button role="tab" data-act="prod-seg" data-v="soil" aria-selected="'+(soilView==="soil")+'">Soil tests'+(soilTests().length?' <span class="chip-sub">'+soilTests().length+'</span>':'')+'</button></div>';
-  if(soilView==="soil")return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 10px"><button class="btn primary" data-act="soil-new">Add a Soil Test</button></div>'+soilListHTML();
-  return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 6px"><button class="btn primary" data-act="prod-new">Add a Product</button><button class="btn" data-act="scan-lookup">Scan a Barcode</button></div>'+productsHTML();
+  var seg='<div class="seg" role="tablist" aria-label="Products or soil tests"><button role="tab" data-act="prod-seg" data-v="products" aria-selected="'+(soilView!=="soil")+'">My Products</button><button role="tab" data-act="prod-seg" data-v="soil" aria-selected="'+(soilView==="soil")+'">Soil Tests'+(soilTests().length?' <span class="chip-sub">('+soilTests().length+')</span>':'')+'</button></div>';
+  if(soilView==="soil")return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 10px"><button class="btn primary" data-act="soil-new">'+ICONS.plus+'Add Soil Test</button></div>'+soilListHTML();
+  return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 6px"><button class="btn primary" data-act="prod-new">'+ICONS.plus+'Add Product</button><button class="btn" data-act="scan-lookup">'+ICONS.barcode+'Scan Barcode</button></div>'+productsHTML();
 }
 function openPlus(){
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet plus-sheet" role="dialog" aria-modal="true" aria-labelledby="plus-title"><h2 id="plus-title">Add</h2>'+
@@ -1350,32 +1369,40 @@ function renderTaskFields(){
 var editId=null,sheetMode="log",formPhotos=[],origPhotos=[],newUploads=[],uploading=0;
 function areaPickerHTML(area){
   var zs=zones();if(zs.length<2)return "";
-  return '<fieldset><legend>Where in the yard?</legend><div class="chips">'+[""].concat(zs).map(function(z){return '<button type="button" class="chip" data-act="pick-area" data-zone="'+esc(z)+'" aria-pressed="'+((area||"")===z)+'">'+esc(z||"Whole lawn")+' <span class="chip-sub">'+fmtInt(z?lawnSqft(z):lawnSqft())+'</span></button>'}).join("")+'</div></fieldset>';
+  var sel=(Array.isArray(area)?area:area?[area]:[]).filter(function(z){return zs.indexOf(z)>=0});
+  return '<fieldset><legend>Where in the yard? <span class="m" style="font-weight:500">(pick one or more)</span></legend><div class="chips">'+[""].concat(zs).map(function(z){return '<button type="button" class="chip" data-act="pick-area" data-zone="'+esc(z)+'" aria-pressed="'+(z?sel.indexOf(z)>=0:!sel.length)+'">'+esc(z?titleCase(z):"Whole Lawn")+' <span class="chip-sub">'+fmtInt(z?lawnSqft(z):lawnSqft())+'</span></button>'}).join("")+'</div></fieldset>';
 }
-function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp,area){
-  sheetArea=area&&zones().indexOf(area)>=0?area:"";
+function knownStores(){var out=[];state.entries.forEach(function(e){var c=e.store?cleanStore(e.store):"";if(c&&out.indexOf(c)<0)out.push(c)});return out}
+function cleanStore(raw){
+  var r=String(raw||"").toUpperCase(),known=[["LOWE","Lowe\u2019s"],["HOME DEPOT","The Home Depot"],["WALMART","Walmart"],["WAL-MART","Walmart"],["SITEONE","SiteOne"],["TRACTOR SUPPLY","Tractor Supply"],["ACE HARDWARE","Ace Hardware"],["MENARDS","Menards"],["TARGET","Target"],["COSTCO","Costco"],["SAM'S CLUB","Sam\u2019s Club"],["CO-OP","Co-op"],["AMAZON","Amazon"]];
+  for(var i=0;i<known.length;i++)if(r.indexOf(known[i][0])>=0)return known[i][1];
+  var t=String(raw||"").trim();return (t===t.toUpperCase()?titleCase(t.toLowerCase()):t).slice(0,40);
+}
+function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp,area,store){
+  sheetAreas=(Array.isArray(area)?area:area?[area]:[]).filter(function(z){return zones().indexOf(z)>=0});
   if(soilTemp===undefined||soilTemp==="")soilTemp=null;
   formPhotos=(photos||[]).slice();origPhotos=formPhotos.slice();newUploads=[];uploading=0;
   editId=id||null;sheetMode=mode||"log";var ex=sheetMode==="expense";
   sheetTask=task||null;sheetTasks=task?[task]:[];multiVals={};
   var multiOK=!editId&&!ex;
-  var costHTML='<div id="single-cost"><label class="field">'+(ex?"Amount":"Cost (optional)")+'<input type="number" id="f-cost" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="'+esc(cost||"")+'"></label></div>';
+  var costHTML='<div id="single-cost"><label class="field">'+(ex?"Amount":"Cost")+'<input type="number" id="f-cost" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="'+esc(cost||"")+'"></label></div>';
   var openMore=!!editId&&!!((cost&&+cost>0)||note||soilTemp!=null||(photos&&photos.length));
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">'+
-    '<h2 id="sheet-title">'+(editId?"Edit Entry":ex?"Add Expense":"Log Work")+'</h2>'+(ex&&!editId?'<button type="button" class="btn rc-btn" data-act="rc-open">'+ICONS.receipt+'Scan a receipt instead</button>':'')+
-    (editId?'':'<button type="button" class="btn big-btn scan-top" data-act="scan-into-log">'+ICONS.barcode+'Scan a Product Barcode</button><p class="m scan-top-note">Scan the bag or bottle you used. TurfDiary fills in the product, picks the task and shows the amount for your lawn.</p>')+
+    '<h2 id="sheet-title">'+(editId?"Edit Entry":ex?"Add Expense":"Log Work")+'</h2>'+
+    (editId?'':'<button type="button" class="btn big-btn scan-top" data-act="scan-into-log">'+ICONS.barcode+'Scan a Product Barcode</button>'+(ex?'<button type="button" class="btn big-btn scan-top" data-act="rc-open">'+ICONS.receipt+'Scan a Receipt</button><p class="m scan-top-note">Scan one product, or a whole receipt to add every item at once.</p>':'<p class="m scan-top-note">Scan the bag or bottle you used. TurfDiary fills in the product, picks the task and shows the amount for your lawn.</p>'))+
     '<fieldset><legend>'+(ex?"What did you buy?":multiOK?"Tasks (pick one or more)":"Task")+'</legend><div class="chips">'+(ex?EXP_CATS.concat(task&&EXP_CATS.indexOf(task)<0?[task]:[]):TASKS).map(function(t){return '<button type="button" class="chip" data-act="pick-task" data-task="'+esc(t)+'" aria-pressed="'+(t===sheetTask)+'">'+esc(t)+'</button>'}).join("")+'</div></fieldset>'+
     (ex?'':areaPickerHTML(area))+
-    '<div id="single-prod"><label class="field">'+(ex?"Product name (optional)":"Product used (optional)")+'<div class="unit-row"><input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"><button type="button" class="btn small" data-act="scan-into-log" aria-label="Scan a product barcode">Scan</button></div></label>'+
+    '<div id="single-prod"><label class="field">'+(ex?"Product name":"Product used (optional)")+'<div class="unit-row"><input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"><button type="button" class="btn small" data-act="scan-into-log" aria-label="Scan a product barcode">Scan</button></div></label>'+
     '<datalist id="prod-list">'+productNames().map(function(p){return '<option value="'+esc(p)+'">'}).join("")+'</datalist>'+
     '<div class="auto-note" id="auto-note"></div><div class="calc" id="prod-calc"></div><div class="chips prod-chips" id="prod-chips"></div></div><div id="multi-fields"></div>'+
+    (ex?'<label class="field">Store<input type="text" id="f-store" list="store-list" maxlength="40" autocapitalize="words" autocomplete="off" placeholder="Where you bought it, like Lowe\u2019s" value="'+esc(store||"")+'"></label><datalist id="store-list">'+knownStores().map(function(x){return '<option value="'+esc(x)+'">'}).join("")+'</datalist>':'')+
     '<label class="field">Date<input type="date" id="f-date" value="'+esc(date||todayISO())+'"></label>'+
     (ex?costHTML:'')+
     '<details class="more" id="more-box"'+(openMore?' open':'')+'><summary>More details<span id="more-sum"></span></summary>'+
     (ex?'':costHTML)+
-    (ex?'':'<label class="field">Soil temperature, \u00b0F (optional)<input type="number" id="f-soil" inputmode="decimal" step="0.1" min="-20" max="130" placeholder="From your thermometer" value="'+esc(soilTemp==null?"":soilTemp)+'"></label>')+
+    (ex?'':'<label class="field">Soil temperature, \u00b0F<input type="number" id="f-soil" inputmode="decimal" step="0.1" min="-20" max="130" placeholder="From your thermometer" value="'+esc(soilTemp==null?"":soilTemp)+'"></label>')+
     '<div id="photo-field"></div>'+
-    '<label class="field">Notes (optional)<textarea id="f-note" rows="2" maxlength="300" placeholder="Mower height, weather, how it went\u2026">'+esc(note||"")+'</textarea></label></details>'+
+    '<label class="field">Notes<textarea id="f-note" rows="2" maxlength="300" placeholder="Mower height, weather, how it went\u2026">'+esc(note||"")+'</textarea></label></details>'+
     '<p class="err" id="f-err" role="alert"></p><div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button><button class="btn primary" data-act="save-log">'+(editId?"Save changes":ex?"Save expense":"Save entry")+'</button></div></div>';
   document.addEventListener("keydown",onKey);
   updateProductChips();renderPhotoField();refreshAllCalcs();
@@ -1390,7 +1417,7 @@ function closeSheet(){
 }
 function renderPhotoField(){
   var box=document.getElementById("photo-field");if(!box)return;setTimeout(updateMoreSum,0);
-  box.innerHTML='<div class="field">Photos (optional)<div class="thumbs">'+formPhotos.map(function(id,i){
+  box.innerHTML='<div class="field">Photos<div class="thumbs">'+formPhotos.map(function(id,i){
     return '<span class="thumb-wrap">'+pimg(id,"thumb","Photo "+(i+1))+'<button type="button" class="thumb-x" data-act="remove-photo" data-i="'+i+'" aria-label="Remove photo '+(i+1)+'">\u00d7</button></span>';
   }).join("")+(uploading?'<span class="thumb thumb-busy">Adding\u2026</span>':'')+
   (formPhotos.length+uploading<6?'<label class="thumb thumb-add">Take photo<input type="file" accept="image/*" capture="environment" class="vh" data-act="add-photo" aria-label="Take a photo with your camera"></label><label class="thumb thumb-add">From gallery<input type="file" accept="image/*" multiple class="vh" data-act="add-photo" aria-label="Add photos from your gallery"></label>':'')+'</div></div>';
@@ -1450,20 +1477,46 @@ function saveLog(){
     for(var mi=0;mi<sheetTasks.length;mi++){
       var t=sheetTasks[mi],v=multiVals[t]||{},c=0;
       if(v.c&&String(v.c).trim()){c=parseFloat(v.c);if(isNaN(c)||c<0){err.textContent="Enter the cost for "+t+" as a number, like 24.99.";return}}
-      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV,area:sheetArea||undefined,weather:date===todayISO()?wxNowText():""});
+      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV,areas:selAreas().length?selAreas():undefined,area:selAreas().length?areaLabel(selAreas()):undefined,weather:date===todayISO()?wxNowText():""});
     }
     newUploads=[];
     recs.forEach(function(r){state.entries.push(r)});
     setStatus(recs.length+" tasks logged");closeSheet();persist();return;
   }
-  var rec={kind:sheetMode==="expense"?"expense":undefined,area:sheetMode!=="expense"&&sheetArea?sheetArea:undefined,date:date,task:sheetTask,cost:Math.round(cost*100)/100,note:document.getElementById("f-note").value.trim().slice(0,300),product:document.getElementById("f-product").value.trim().slice(0,80),photos:formPhotos.slice()};
+  var stEl=document.getElementById("f-store");
+  var rec={kind:sheetMode==="expense"?"expense":undefined,store:sheetMode==="expense"&&stEl&&stEl.value.trim()?cleanStore(stEl.value.trim()):undefined,areas:sheetMode!=="expense"&&selAreas().length?selAreas():undefined,area:sheetMode!=="expense"&&selAreas().length?areaLabel(selAreas()):undefined,date:date,task:sheetTask,cost:Math.round(cost*100)/100,note:document.getElementById("f-note").value.trim().slice(0,300),product:document.getElementById("f-product").value.trim().slice(0,80),photos:formPhotos.slice()};
   if(sheetMode!=="expense"){rec.soilTemp=soilV;if(!editId&&date===todayISO()&&wxNowText())rec.weather=wxNowText()}
   origPhotos.forEach(function(id){if(formPhotos.indexOf(id)<0)dropPhoto(id,editId)});
   newUploads=[];
   var ex=editId?state.entries.find(function(x){return x.id===editId}):null;
   if(ex){Object.assign(ex,rec);delete ex.quick}else state.entries.push(Object.assign({id:uid()},rec));
   closeSheet();persist();
+  if(rec.kind==="expense"&&!editId&&rec.product)promptNewProducts([{name:rec.product,cat:rec.task,price:rec.cost>0?rec.cost:null}]);
 }
+/* new purchases: offer to save them to My Products (rates can be added later) */
+var NP=[];
+function prodCatFromExp(c){return CATS.indexOf(c)>=0&&c!=="Other"?c:"Other"}
+function promptNewProducts(items){
+  var declined=state.npDeclined||[];
+  NP=items.filter(function(it){var n=(it.name||"").trim();return n&&n.toLowerCase()!=="sales tax"&&!findProduct(n)&&!(it.upc&&findByUpc(it.upc))&&declined.indexOf(n.toLowerCase())<0}).map(function(it){return{name:it.name.trim(),cat:prodCatFromExp(it.cat),price:it.price,upc:it.upc||null,on:true}});
+  if(!NP.length)return;
+  var one=NP.length===1;
+  sheet2().innerHTML='<div class="scrim" data-act="np-no"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="np-title"><h2 id="np-title">'+(one?"Add to My Products?":"Add these to My Products?")+'</h2>'+
+    '<p class="note">'+(one?'<b>'+esc(NP[0].name)+'</b> isn\u2019t in your products yet.':'These items aren\u2019t in your products yet.')+' Saving '+(one?'it':'them')+' lets TurfDiary match '+(one?'it':'them')+' on future receipts and scans. You can add the application rate and other details later from the Products tab.</p>'+
+    (one?'':'<div class="list" style="margin-bottom:12px">'+NP.map(function(it,i){return '<label class="item onb-row"><input type="checkbox" data-np="'+i+'" checked><span class="grow"><span class="t">'+esc(it.name)+'</span><span class="m" style="display:block">'+esc(titleCase(it.cat))+(it.price!=null?", "+money(it.price):"")+'</span></span></label>'}).join("")+'</div>')+
+    '<div class="actions" style="flex-wrap:wrap"><button class="btn ghost" data-act="np-no" style="margin-right:auto">Not Now</button>'+(one?'<button class="btn" data-act="np-details">Add Details Now</button>':'')+'<button class="btn primary" data-act="np-yes">'+(one?"Add to My Products":"Add Selected")+'</button></div></div>';
+}
+function npSave(details){
+  var added=0,first=null;
+  NP.forEach(function(it,i){var cb=document.querySelector('[data-np="'+i+'"]');if(cb&&!cb.checked)return;
+    var rec={id:"pr_"+uid(),name:capWords(it.name),cat:it.cat,mode:"rate",unit:"lb",rate:null,cover:null,pkgSize:null,pkgUnit:"lb",price:it.price!=null?Math.round(it.price*100)/100:null,upc:it.upc?normUpc(it.upc):null,spreader:""};
+    if(findProduct(rec.name))return;state.products.push(rec);if(rec.upc)rememberProduct(rec);added++;if(!first)first=rec});
+  closeSheet2();saveQuiet();render();
+  if(details&&first){openProduct(first.id);return}
+  setStatus(added?added+" "+pl(added,"product")+" added. Add rates anytime in Products":"Nothing added");
+}
+
+
 
 /* ---------- backup ---------- */
 function blobToDataURL(b){return new Promise(function(res){var r=new FileReader();r.onload=function(){res(r.result)};r.onerror=function(){res(null)};r.readAsDataURL(b)})}
@@ -1578,7 +1631,7 @@ document.addEventListener("click",function(ev){
     state.entries.push({id:uid(),date:t,task:task,cost:0,note:"",product:"",photos:[],quick:true,weather:wxNowText()});setStatus(task+" logged for today");persist();
     if(el.classList.contains("mow-btn"))playMowAnim();
   }
-  else if(a==="edit-entry"){var en=state.entries.find(function(x){return x.id===el.dataset.id});if(en)openSheet(en.task,en.cost||"",en.note,en.product,en.date,en.id,en.kind==="expense"?"expense":null,en.photos,en.soilTemp,en.area)}
+  else if(a==="edit-entry"){var en=state.entries.find(function(x){return x.id===el.dataset.id});if(en)openSheet(en.task,en.cost||"",en.note,en.product,en.date,en.id,en.kind==="expense"?"expense":null,en.photos,en.soilTemp,en.areas||en.area,en.store)}
   else if(a==="view-photo")openViewer(el.dataset.id);
   else if(a==="viewer-prev"){if(viewerIdx>0)showViewer(viewerIdx-1)}
   else if(a==="viewer-next"){if(viewerIdx<viewerList.length-1)showViewer(viewerIdx+1)}
@@ -1628,6 +1681,11 @@ document.addEventListener("click",function(ev){
   else if(a==="onb-done")finishOnboarding();
   else if(a==="onb-again"){openOnboarding(1)}
   else if(a==="rc-open")openReceipt();
+  else if(a==="np-yes")npSave(false);
+  else if(a==="np-details")npSave(true);
+  else if(a==="np-no"){if(!state.npDeclined)state.npDeclined=[];NP.forEach(function(it){var k=it.name.toLowerCase();if(state.npDeclined.indexOf(k)<0)state.npDeclined.push(k)});saveQuiet();closeSheet2()}
+  else if(a==="skip-due"){var sk=state.schedules.find(function(x){return x.task===el.dataset.task});if(sk){var b0=dueBase(sk),ev=Math.max(1,+sk.every||7),cur=b0?addDays(b0,ev):todayISO();if(cur<todayISO())cur=todayISO();sk.skip={base:cur,on:todayISO(),prev:sk.skip||null};persist();setStatus(sk.task+" skipped. Next due "+fmtWeekday(addDays(cur,ev)))}}
+  else if(a==="unskip"){var su=state.schedules.find(function(x){return x.task===el.dataset.task});if(su&&su.skip){su.skip=su.skip.prev||null;persist();setStatus("Skip undone")}}
   else if(a==="prod-seg"){soilView=el.dataset.v;render()}
   else if(a==="soil-new")openSoilForm(null);
   else if(a==="soil-edit")openSoilForm(el.dataset.id);
@@ -1678,10 +1736,10 @@ document.addEventListener("click",function(ev){
   else if(a==="map-intro-ok"){state.mapIntroSeen=true;saveQuiet();var mi=document.getElementById("map-intro");if(mi)mi.remove()}
   else if(a==="map-name")nameSection(el.dataset.name);
   else if(a==="map-name-custom"){var ni=document.getElementById("map-name-in");if(ni)nameSection(ni.value)}
-  else if(a==="lawn-rename"){var li=+el.dataset.i,cur=state.lawn.areas[li];sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rn-title"><h2 id="rn-title">Rename section</h2><div class="chips" style="margin-bottom:12px">'+["Front yard","Back yard","Side yard"].map(function(o){return '<button type="button" class="chip" data-act="rn-pick" data-name="'+o+'">'+o+'</button>'}).join("")+'</div><label class="field">Name<input type="text" id="rn-in" maxlength="30" value="'+esc(cur.name)+'" autocapitalize="words"></label><p class="m">Sections with the same name are added together.</p><div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="rn-save" data-i="'+li+'">Save</button></div></div>'}
+  else if(a==="lawn-rename"){var li=+el.dataset.i,cur=state.lawn.areas[li];sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rn-title"><h2 id="rn-title">Rename section</h2><div class="chips" style="margin-bottom:12px">'+["Front Yard","Back Yard","Side Yard"].map(function(o){return '<button type="button" class="chip" data-act="rn-pick" data-name="'+o+'">'+o+'</button>'}).join("")+'</div><label class="field">Name<input type="text" id="rn-in" maxlength="30" value="'+esc(cur.name)+'" autocapitalize="words"></label><p class="m">Sections with the same name are added together.</p><div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="rn-save" data-i="'+li+'">Save</button></div></div>'}
   else if(a==="rn-pick"){var rin=document.getElementById("rn-in");if(rin)rin.value=el.dataset.name}
   else if(a==="rn-save"){var nv=(document.getElementById("rn-in").value||"").trim().slice(0,30);if(nv){state.lawn.areas[+el.dataset.i].name=nv;closeSheet2();persist()}}
-  else if(a==="pick-area"){sheetArea=el.dataset.zone||"";document.querySelectorAll('[data-act="pick-area"]').forEach(function(c){c.setAttribute("aria-pressed",String((c.dataset.zone||"")===sheetArea))});var fc3=document.getElementById("f-cost");if(fc3&&fc3.dataset.auto==="1"){var fp3=document.getElementById("f-product"),g3=costGuess(sheetTasks[0],fp3?fp3.value:"");fc3.value=g3!=null?g3:"";updateMoreSum()}refreshAllCalcs()}
+  else if(a==="pick-area"){var zz=el.dataset.zone||"";if(!zz)sheetAreas=[];else{var zi=sheetAreas.indexOf(zz);if(zi>=0)sheetAreas.splice(zi,1);else sheetAreas.push(zz);if(sheetAreas.length===zones().length)sheetAreas=[]}var sa=selAreas();document.querySelectorAll('[data-act="pick-area"]').forEach(function(c){var z=c.dataset.zone||"";c.setAttribute("aria-pressed",String(z?sa.indexOf(z)>=0:!sa.length))});var fc3=document.getElementById("f-cost");if(fc3&&fc3.dataset.auto==="1"){var fp3=document.getElementById("f-product"),g3=costGuess(sheetTasks[0],fp3?fp3.value:"");fc3.value=g3!=null?g3:"";updateMoreSum()}refreshAllCalcs()}
   else if(a==="map-save")mapSave();
   else if(a==="map-finish")mapFinish();
   else if(a==="map-undo"){MAP.pts.pop();mapDraw();mapRead()}

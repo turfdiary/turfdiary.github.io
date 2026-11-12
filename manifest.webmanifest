@@ -35,8 +35,8 @@
   ],
   "shortcuts": [
     {
-      "name": "Mowed today",
-      "short_name": "Mowed today",
+      "name": "Mowed Today",
+      "short_name": "Mowed Today",
       "description": "Log a mow for today",
       "url": "./?action=mow",
       "icons": [
@@ -48,8 +48,8 @@
       ]
     },
     {
-      "name": "Scan a receipt",
-      "short_name": "Scan receipt",
+      "name": "Scan a Receipt",
+      "short_name": "Scan Receipt",
       "description": "Add expenses from a receipt photo",
       "url": "./?action=receipt",
       "icons": [
@@ -61,8 +61,8 @@
       ]
     },
     {
-      "name": "Log work",
-      "short_name": "Log work",
+      "name": "Log Work",
+      "short_name": "Log Work",
       "description": "Log yard work",
       "url": "./?action=log",
       "icons": [

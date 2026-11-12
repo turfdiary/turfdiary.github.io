@@ -529,3 +529,43 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .plus-opt.plus-main span{color:var(--grass-ink);opacity:.9;font-size:14px}
 .plus-opt.plus-main svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-bottom:2px}
 .plus-opt.plus-wide{grid-column:1/-1;min-height:0}
+
+/* products: per-application needs */
+.needs{margin-top:6px;background:var(--chip);border-radius:12px;padding:8px 10px}
+.needs-h{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.need-row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:2px 0}
+.need-row span{color:var(--muted)}
+.need-row b{color:var(--grass);text-align:right}
+.cat-h span{font-weight:700}
+.toolbar .btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;margin-right:6px}
+/* Diary: Again button under Delete */
+.btn.again2{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.btn.again2 svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.prod-groups .item{flex-wrap:wrap}
+.prod-groups .item .needs{flex-basis:100%;margin-top:2px}
+.need-row span{white-space:nowrap}
+
+/* section names, categories and chips in title case */
+.sec-chip,.cat-h,.zone-h b,.soil-item .t{text-transform:capitalize}
+
+/* Again button beside the task name */
+.t-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.btn.again3{display:inline-flex;align-items:center;gap:4px;flex:none}
+.btn.again3 svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.again-col{align-self:center;flex:none}
+.scan-top+.scan-top{margin-top:10px}
+.rc-store{display:flex;flex-direction:column;font-size:12px;font-weight:700;color:var(--muted);gap:2px}
+.rc-store input{font:inherit;font-size:16px;font-weight:700;color:var(--ink);padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);width:100%;max-width:220px}
+
+.hero-today{font-size:15px;font-weight:600;opacity:.9;white-space:nowrap}
+
+.head-right{display:flex;align-items:center;gap:10px}
+.head-date{font-size:15px;font-weight:700;color:var(--muted);white-space:nowrap}
+
+/* two action buttons side by side on any phone */
+.btn-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.btn-pair .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding-left:10px;padding-right:10px;white-space:nowrap;min-width:0}
+.btn-pair .btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+@media (max-width:370px){.btn-pair .btn{font-size:15px}}
