@@ -9,10 +9,88 @@
   "orientation": "portrait",
   "background_color": "#EDF1E6",
   "theme_color": "#2E6A39",
-  "categories": ["lifestyle", "productivity"],
+  "categories": [
+    "lifestyle",
+    "productivity"
+  ],
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mowed today",
+      "short_name": "Mowed today",
+      "description": "Log a mow for today",
+      "url": "./?action=mow",
+      "icons": [
+        {
+          "src": "sc-mow.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Scan a receipt",
+      "short_name": "Scan receipt",
+      "description": "Add expenses from a receipt photo",
+      "url": "./?action=receipt",
+      "icons": [
+        {
+          "src": "sc-receipt.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Log work",
+      "short_name": "Log work",
+      "description": "Log yard work",
+      "url": "./?action=log",
+      "icons": [
+        {
+          "src": "sc-log.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "./share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "receipt",
+          "accept": [
+            "image/*",
+            "application/pdf",
+            ".pdf"
+          ]
+        }
+      ]
+    }
+  }
 }

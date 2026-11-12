@@ -455,3 +455,77 @@ details.more[open]{padding-bottom:2px}
 .pin-k.small{font-size:22px;background:transparent;border-color:transparent}
 .pin-k svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .pin-input{letter-spacing:.6em;font-size:22px;text-align:center}
+
+/* small pill buttons (match Edit/Delete, just smaller) */
+.btn.mini{font-size:13px;font-weight:600;padding:5px 12px;min-height:32px;line-height:1.2;border-radius:999px;white-space:nowrap}
+.btn.mini.again{margin-top:8px}
+.sec-head{align-items:center}
+.sec-head h2{margin-bottom:10px}
+
+.toolbar .btn svg{margin-right:6px}
+.toolbar .btn{display:inline-flex;align-items:center}
+a.btn{text-decoration:none;display:inline-flex;align-items:center}
+
+/* map modes, guide and section names */
+.map-mode{position:absolute;left:10px;top:10px;display:flex;background:var(--surface);border-radius:999px;padding:4px;box-shadow:0 3px 12px rgba(0,0,0,.25);z-index:3}
+.mm{font:inherit;font-size:14px;font-weight:700;border:0;background:none;color:var(--ink);padding:8px 12px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.mm[aria-pressed="true"]{background:var(--grass);color:var(--grass-ink)}
+.map-box.drawing{cursor:crosshair}
+.map-hint{top:auto}
+.map-name{background:var(--surface);padding:12px 12px 6px;border-top:1px solid var(--line)}
+.map-name .chips{margin:8px 0}
+.chip.sel{outline:2px solid var(--grass)}
+.map-intro{position:absolute;inset:0;z-index:10;background:rgba(10,20,12,.55);display:flex;align-items:center;justify-content:center;padding:18px}
+.mi-card{background:var(--surface);color:var(--ink);border-radius:20px;padding:20px;max-width:400px;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.mi-card h2{margin:0 0 10px;font-size:22px}
+.mi-card ol{margin:0 0 16px;padding-left:20px;display:flex;flex-direction:column;gap:10px;font-size:15px;line-height:1.4}
+.zone-h{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 6px}
+.zone-h span{color:var(--muted);font-weight:600}
+.zone-amts{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13.5px;color:var(--muted);margin-top:2px}
+.zone-amts b{color:var(--ink);font-weight:600}
+.chip-sub{font-weight:500;opacity:.75;font-size:.85em;margin-left:4px}
+
+/* soil tests */
+.seg{display:flex;background:var(--chip);border-radius:999px;padding:4px;gap:4px}
+.seg button{flex:1;font:inherit;font-weight:700;font-size:15px;border:0;background:none;color:var(--ink);padding:9px 10px;border-radius:999px;cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.12);color:var(--grass)}
+.soil-item{width:100%;text-align:left;font:inherit;color:inherit;background:none;border:0;border-top:1px solid var(--line);cursor:pointer}
+.list .soil-item:first-child{border-top:0}
+.soil-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.soil-chip{font-size:13px;background:var(--chip);border-radius:999px;padding:3px 9px}
+.soil-chip b{font-weight:800}
+.soil-grid,.two-col{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.soil-grid .field{font-size:14px}
+.soil-v{font-weight:800;font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.soil-v span{font-size:12px;font-weight:600;color:var(--muted)}
+.soil-ch{font-size:12.5px;color:var(--muted)}
+
+.calc-note{display:block;font-size:12.5px;color:var(--muted);font-weight:500;margin-top:3px}
+
+/* + menu: centered */
+.plus-sheet h2{text-align:center}
+.plus-opt{text-align:center;align-items:center;justify-content:center}
+.plus-sheet .actions{justify-content:center}
+
+/* add a product: scan first */
+.big-btn{display:flex;width:100%;justify-content:center;align-items:center;gap:10px;min-height:54px;font-size:17px;margin-top:10px}
+.big-btn svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.p-banner{background:var(--day-tint);border:1px solid #F2B33D;border-radius:12px;padding:10px 12px;font-size:14px;margin:0 0 12px}
+.pc-need div+div{margin-top:4px}
+
+.scan-top{margin:0 0 4px}
+.scan-top-note{text-align:center;font-size:13px;margin:4px 0 14px}
+/* make the Log work scan button stand out like the task chips */
+.btn.scan-top{background:var(--chip);color:var(--grass);border:1.5px solid var(--grass);font-weight:800}
+.btn.scan-top svg{stroke:var(--grass)}
+.btn.scan-top:active{filter:brightness(.95)}
+
+/* task names shown in title case (stored names unchanged) */
+.task-name,.chip[data-task],.mt-name{text-transform:capitalize}
+
+/* + menu: Log Work is the main action */
+.plus-opt.plus-main{grid-column:1/-1;background:var(--grass);border-color:var(--grass);color:var(--grass-ink);min-height:118px;padding:18px 14px;box-shadow:0 6px 16px rgba(46,106,57,.28)}
+.plus-opt.plus-main b{color:var(--grass-ink);font-size:22px}
+.plus-opt.plus-main span{color:var(--grass-ink);opacity:.9;font-size:14px}
+.plus-opt.plus-main svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-bottom:2px}
+.plus-opt.plus-wide{grid-column:1/-1;min-height:0}

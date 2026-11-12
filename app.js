@@ -58,7 +58,7 @@ function photoPut(id,blob){return photoTx("readwrite",function(st){st.put(blob,i
 function photoGet(id){return photoTx("readonly",function(st){return st.get(id)})}
 function photoDel(id){if(urlCache[id]){URL.revokeObjectURL(urlCache[id]);delete urlCache[id]}return photoTx("readwrite",function(st){st.delete(id)}).catch(function(){})}
 var urlCache={};
-function photoShared(id,exceptId){return state.entries.some(function(e){return e.id!==exceptId&&(e.photos||[]).indexOf(id)>=0})}
+function photoShared(id,exceptId){return state.entries.some(function(e){return e.id!==exceptId&&(e.photos||[]).indexOf(id)>=0})||(state.soilTests||[]).some(function(t){return t.id!==exceptId&&(t.photos||[]).indexOf(id)>=0})}
 function dropPhoto(id,exceptId){if(!photoShared(id,exceptId))photoDel(id)}
 function photoURL(id){
   if(urlCache[id])return Promise.resolve(urlCache[id]);
@@ -195,7 +195,7 @@ function wxCardHTML(){
   var h='<section class="soil" id="wx-card" aria-labelledby="wx-h"><h2 class="soil-h" id="wx-h">Weather</h2>';
   if(!state.wxLoc){
     return h+'<p class="note" style="margin:6px 0 12px">See your local forecast with rain and frost tips. Works for locations in the United States.</p>'+
-      '<button class="btn primary" data-act="wx-gps">Use my location</button>'+(wxErr?'<p class="err" role="alert">'+esc(wxErr)+'</p>':'')+'</section>';
+      '<button class="btn primary" data-act="wx-gps">Use My Location</button>'+(wxErr?'<p class="err" role="alert">'+esc(wxErr)+'</p>':'')+'</section>';
   }
   var d=wx&&wx.key===wxKey()?wx:null;
   if(state.wxLoc.place)h+='<p class="m" style="margin:0">'+esc(state.wxLoc.place)+'</p>';
@@ -220,7 +220,7 @@ function wxCardHTML(){
      '<div class="wx-today-ic">'+wxIcon(isDay?t0.short:(t0.night||t0.short),!isDay)+
      '<div class="wx-today-pops" aria-label="Chance of rain'+(isDay?', day '+(t0.dayPop==null?"unknown":t0.dayPop+"%"):'')+(t0.night?', tonight '+(t0.nightPop==null?"unknown":t0.nightPop+"%"):'')+'">'+
      (isDay?tp(false,t0.dayPop,"Day"):'')+(t0.night?tp(true,t0.nightPop,"Tonight"):'')+'</div></div></div></div>';
-  h+='<div class="wx-next"><span>Next '+days.length+' days</span><span class="wx-key">Rain: <i class="sw d"></i>day <i class="sw n"></i>night</span></div>';
+  h+='<div class="wx-next"><span>Next '+days.length+' days</span><span class="wx-key">Rain: <i class="sw d"></i>Day <i class="sw n"></i>Night</span></div>';
   h+='<div class="wx-strip" style="grid-template-columns:repeat('+days.length+',minmax(0,1fr))" role="group" aria-label="'+days.length+'-day forecast">'+days.map(function(x,i){
     function pp(night,v){return '<span class="wx-pp '+(night?'n':'d')+(v!=null&&v>=20?' wet':'')+'" title="'+(night?'Night':'Day')+' rain chance">'+(v!=null?esc(v)+'<small>%</small>':'\u2013')+'</span>'}
     return '<button type="button" class="wx-day'+(i===wxSel?' sel':'')+'" data-act="wx-day" data-i="'+i+'" aria-pressed="'+(i===wxSel)+'" aria-label="'+esc(wxDayText(x))+'">'+
@@ -239,7 +239,7 @@ function wxCardHTML(){
 function refreshWxCard(){var c=document.getElementById("wx-card");if(c)c.outerHTML=wxCardHTML();var s=document.getElementById("wx-settings");if(s)s.outerHTML=wxSettingsHTML()}
 function wxSettingsHTML(){
   return '<div class="settings-block" id="wx-settings"><p>'+(state.wxLoc?'Showing weather for <b>'+esc(state.wxLoc.place||"your location")+'</b>.':'No location set. Weather works for locations in the United States.')+'</p>'+
-    '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="wx-gps">'+(state.wxLoc?"Update my location":"Use my location")+'</button>'+(state.wxLoc?'<button class="btn" data-act="wx-remove">Turn off weather</button>':'')+'</div>'+
+    '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="wx-gps">'+(state.wxLoc?"Update My Location":"Use My Location")+'</button>'+(state.wxLoc?'<button class="btn" data-act="wx-remove">Turn Off Weather</button>':'')+'</div>'+
     (wxErr&&!state.wxLoc?'<p class="err" role="alert" style="margin-top:10px">'+esc(wxErr)+'</p>':'')+
     '<p class="src">Your location is rounded to within about a mile and sent only to the National Weather Service to get your forecast.</p></div>';
 }
@@ -259,41 +259,55 @@ function wxUseGPS(){
 /* ---------- lawn size (traced on USGS aerial imagery) and saved products ---------- */
 function ensureData(){if(!state.lawn||!Array.isArray(state.lawn.areas))state.lawn={areas:[],manual:null};if(!Array.isArray(state.products))state.products=[]}
 ensureData();
-function lawnSqft(){var l=state.lawn||{};if(l.manual>0)return l.manual;return (l.areas||[]).reduce(function(t,a){return t+(a.sqft||0)},0)}
+function lawnSqft(zone){var l=state.lawn||{};if(!zone&&l.manual>0)return l.manual;return (l.areas||[]).reduce(function(t,a){return t+(!zone||a.name===zone?(a.sqft||0):0)},0)}
+function zones(){var l=state.lawn||{},out=[];if(l.manual>0)return out;(l.areas||[]).forEach(function(a){if(out.indexOf(a.name)<0)out.push(a.name)});return out}
+var sheetArea="";
+function areaSqft(){return sheetArea&&zones().indexOf(sheetArea)>=0?lawnSqft(sheetArea):lawnSqft()}
+function amtShort(p,sq){if(!hasRate(p)||!(sq>0))return "";if(p.mode==="cover"){var b=sq/p.cover;return fmtAmt(b)+" "+pkgWord(p,b)}var a=p.rate*sq/1000;return fmtAmt(a)+" "+p.unit}
 function fmtInt(n){return Math.round(n).toLocaleString()}
 function fmtAmt(n){return n>=100?fmtInt(n):(Math.round(n*10)/10).toLocaleString()}
-function pkgWord(p,n){var liquid=/fl oz|gal|qt/.test(p.unit||"");return liquid?(n===1?"container":"containers"):(n===1?"bag":"bags")}
+function pkgWord(p,n){var liquid=/fl oz|gal|qt|ml/.test(pkgU(p)||"");return liquid?(n===1?"container":"containers"):(n===1?"bag":"bags")}
 function hasRate(p){return p.mode==="cover"?p.cover>0:p.rate>0}
 function prodSummary(p){
   var t=!hasRate(p)?"No application rate saved":p.mode==="cover"?"1 "+pkgWord(p,1)+" covers "+fmtInt(p.cover)+" sq ft":(Math.round(p.rate*100)/100).toLocaleString()+" "+p.unit+" per 1,000 sq ft";
-  if(p.pkgSize)t+=", "+fmtAmt(p.pkgSize)+" "+p.unit+" "+pkgWord(p,1);
+  if(p.pkgSize)t+=", "+fmtAmt(p.pkgSize)+" "+pkgU(p)+" "+pkgWord(p,1);
   if(p.price!=null)t+=", "+money(p.price)+" a "+pkgWord(p,1);
   return t;
 }
+/* unit conversion: liquids to ml, weights to oz */
+var UNIT_BASE={"ml":["v",1],"fl oz":["v",29.5735],"qt":["v",946.353],"gal":["v",3785.41],"oz":["w",1],"lb":["w",16]};
+function pkgU(p){return p.pkgUnit||p.unit}
+function convertible(a,b){return UNIT_BASE[a]&&UNIT_BASE[b]&&UNIT_BASE[a][0]===UNIT_BASE[b][0]}
+function toUnit(x,from,to){if(from===to)return x;if(!convertible(from,to))return null;return x*UNIT_BASE[from][1]/UNIT_BASE[to][1]}
+function pkgsNeeded(p,sq){if(!(p.rate>0&&p.pkgSize>0))return null;var amt=toUnit(p.rate*sq/1000,p.unit,pkgU(p));return amt==null?null:amt/p.pkgSize}
 function prodCostUsed(p,sq){
   if(p.price==null||!(sq>0))return null;
   if(p.mode==="cover"&&p.cover>0)return Math.round(sq/p.cover*p.price*100)/100;
-  if(p.rate>0&&p.pkgSize>0)return Math.round(p.rate*sq/1000/p.pkgSize*p.price*100)/100;
+  var n=pkgsNeeded(p,sq);if(n!=null)return Math.round(n*p.price*100)/100;
   return null;
 }
 function costButtons(p,target){
   if(!p||p.price==null)return "";
-  var used=prodCostUsed(p,lawnSqft()),h='<span class="cost-btns">Cost: ';
+  var used=prodCostUsed(p,areaSqft()),h='<span class="cost-btns">Cost: ';
   if(used!=null)h+='<button type="button" class="chip small" data-act="use-cost" data-v="'+used+'" data-t="'+esc(target)+'">'+money(used)+' used on your lawn</button>';
   h+='<button type="button" class="chip small" data-act="use-cost" data-v="'+p.price+'" data-t="'+esc(target)+'">'+money(p.price)+' whole '+pkgWord(p,1)+'</button></span>';
   return h;
 }
+var CALC_NOTE="Estimate based on the label rate you entered. Always follow the product label.";
 function prodCalc(p,sq){
   if(!p)return "";
   if(!hasRate(p))return "Add this product\u2019s application rate to see how much you need"+(p.spreader?". Spreader setting: "+p.spreader:"")+".";
   if(!(sq>0))return "Measure your lawn in Settings to see how much you need.";
-  var t="For your "+fmtInt(sq)+" sq ft: ";
+  var t="Suggested per application for your "+fmtInt(sq)+" sq ft: about ";
+  function pk(n){return n<1?fmtAmt(n)+" of a "+pkgWord(p,1):fmtAmt(n)+" "+pkgWord(p,n)}
   if(p.mode==="cover"&&p.cover>0){
-    var b=sq/p.cover;t+=fmtAmt(b)+" "+pkgWord(p,b)+" (buy "+Math.ceil(b-0.02)+")";
-    if(p.pkgSize)t+=", about "+fmtAmt(b*p.pkgSize)+" "+p.unit;
+    var b=sq/p.cover;t+=pk(b);
+    if(p.pkgSize)t+=" ("+fmtAmt(b*p.pkgSize)+" "+pkgU(p)+")";
   }else if(p.rate>0){
     var amt=p.rate*sq/1000;t+=fmtAmt(amt)+" "+p.unit;
-    if(p.pkgSize){var n=amt/p.pkgSize;t+=", "+fmtAmt(n)+" "+pkgWord(p,n)+" (buy "+Math.ceil(n-0.02)+")"}
+    var big=p.unit==="fl oz"&&amt>=64?toUnit(amt,"fl oz","gal"):p.unit==="ml"&&amt>=2000?toUnit(amt,"ml","gal"):p.unit==="oz"&&amt>=32?toUnit(amt,"oz","lb"):null;
+    if(big!=null)t+=" (about "+fmtAmt(big)+" "+(p.unit==="oz"?"lb":"gal")+")";
+    var n=pkgsNeeded(p,sq);if(n!=null)t+=", "+pk(n);
   }else return "";
   if(p.spreader)t+=". Spreader setting: "+p.spreader;
   return t+".";
@@ -302,7 +316,7 @@ function findProduct(name){name=(name||"").trim().toLowerCase();if(!name)return 
 function calcHTML(name,target){
   var n=(name||"").trim();if(!n)return "";
   var p=findProduct(n);
-  if(p)return '<span class="calc-ok">'+esc(prodCalc(p,lawnSqft()))+'</span> <button type="button" class="link small" data-act="prod-edit" data-id="'+esc(p.id)+'">Edit product</button>'+costButtons(p,target||"f");
+  if(p)return '<span class="calc-ok">'+esc(prodCalc(p,areaSqft()).replace("application for your ",sheetArea&&zones().indexOf(sheetArea)>=0?"application for your "+sheetArea.toLowerCase()+", ":"application for your "))+'</span><span class="calc-note">'+CALC_NOTE+'</span> <button type="button" class="link small" data-act="prod-edit" data-id="'+esc(p.id)+'">Edit product</button>'+costButtons(p,target||"f");
   return '<button type="button" class="link small" data-act="prod-new" data-name="'+esc(n)+'" data-cat="'+esc(TASK_CAT[target&&target!=="f"?target:sheetTask]||"")+'">Save this product\u2019s rate</button> <span class="m">to calculate how much you need.</span>';
 }
 function updateCalc(input){
@@ -314,33 +328,37 @@ function refreshAllCalcs(){var f=document.getElementById("f-product");if(f)updat
 /* product editor (opens above other sheets) */
 var prodEditId=null,prodMode="cover";
 function sheet2(){var d=document.getElementById("sheet2");if(!d){d=document.createElement("div");d.id="sheet2";document.body.appendChild(d)}return d}
-function closeSheet2(){sheet2().innerHTML=""}
+function closeSheet2(){sheet2().innerHTML="";fillAfterSave=false}
 var upcPrefill="",catPrefill="",skipRate=false;
 function prodActionsHTML(existing){return (existing?'<button class="btn ghost" data-act="prod-del" style="margin-right:auto">Delete</button>':'')+'<button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="prod-save">Save product</button>'}
-function openProduct(id,name,upc,cat){
+function openProduct(id,name,upc,cat,tpl,msg){
   upcPrefill=upc||"";catPrefill=cat||(sheetTask&&(TASK_CAT[sheetTask]||(CATS.indexOf(sheetTask)>=0?sheetTask:"")))||"";
   var p=id?state.products.find(function(x){return x.id===id}):null;
-  prodEditId=p?p.id:null;prodMode=p?p.mode:"cover";
-  var unitSel=function(v){return ["lb","oz","fl oz","gal"].map(function(u){return '<option'+(u===(v||"lb")?' selected':'')+'>'+u+'</option>'}).join("")};
-  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="p-title"><h2 id="p-title">'+(p?"Edit product":"Save a product")+'</h2>'+
-    '<label class="field">Category<select id="p-cat">'+CATS.map(function(c){return '<option'+(c===(p?prodCat(p):(catPrefill||"Fertilizer"))?' selected':'')+'>'+c+'</option>'}).join("")+'</select></label>'+
-    '<label class="field">Product name<input type="text" id="p-name" maxlength="80" autocapitalize="words" data-act="cap-words" value="'+esc(p?p.name:(name||""))+'" placeholder="e.g. LESCO Dimension 19-0-7"></label>'+
-    '<fieldset><legend>How does the label list it?</legend><div class="chips"><button type="button" class="chip" data-act="prod-mode" data-mode="cover" aria-pressed="'+(prodMode==="cover")+'">One bag covers an area</button><button type="button" class="chip" data-act="prod-mode" data-mode="rate" aria-pressed="'+(prodMode==="rate")+'">Amount per 1,000 sq ft</button></div></fieldset>'+
-    '<div id="p-cover"'+(prodMode==="cover"?'':' hidden')+'><label class="field">One bag or container covers (sq ft, optional)<input type="number" id="p-cover-n" inputmode="numeric" min="1" value="'+esc(p&&p.cover||"")+'" placeholder="e.g. 5000"></label></div>'+
-    '<div id="p-rate"'+(prodMode==="rate"?'':' hidden')+'><label class="field">Apply this much per 1,000 sq ft (optional)<div class="unit-row"><input type="number" id="p-rate-n" inputmode="decimal" step="0.01" min="0" value="'+esc(p&&p.rate||"")+'" placeholder="e.g. 3.85"><select id="p-unit" aria-label="Unit">'+unitSel(p&&p.unit)+'</select></div></label></div>'+
-    '<label class="field">Bag or container size (optional)<div class="unit-row"><input type="number" id="p-pkg" inputmode="decimal" step="0.01" min="0" value="'+esc(p&&p.pkgSize||"")+'" placeholder="e.g. 50"><select id="p-unit2" aria-label="Unit">'+unitSel(p&&p.unit)+'</select></div></label>'+
-    '<label class="field">Price per bag or container (optional)<div class="unit-row"><span class="dollar">$</span><input type="number" id="p-price" inputmode="decimal" step="0.01" min="0" value="'+esc(p&&p.price!=null?p.price:"")+'" placeholder="e.g. 57.94"></div></label>'+
-    '<label class="field">Barcode (UPC, optional)<div class="unit-row"><input type="text" id="p-upc" inputmode="numeric" maxlength="24" value="'+esc(p&&p.upc||upcPrefill||"")+'" placeholder="Scan or type the number under the barcode"><button type="button" class="btn small" data-act="scan-into-product">Scan</button></div></label>'+
-    '<label class="field">Spreader setting (optional)<input type="text" id="p-spread" maxlength="40" value="'+esc(p&&p.spreader||"")+'" placeholder="e.g. 3.5 on my rotary spreader"></label>'+
+  var src=p||tpl||null;
+  prodEditId=p?p.id:null;prodMode=src&&src.mode?src.mode:"rate";
+  var unitSel=function(v){return ["lb","oz","fl oz","ml","gal"].map(function(u){return '<option'+(u===(v||"lb")?' selected':'')+'>'+u+'</option>'}).join("")};
+  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="p-title"><h2 id="p-title">'+(p?"Edit Product":"Save a Product")+'</h2>'+(msg?'<p class="p-banner">'+esc(msg)+'</p>':'')+
+    '<label class="field">Category<select id="p-cat">'+CATS.map(function(c){return '<option'+(c===(src?prodCat(src):(catPrefill||"Fertilizer"))?' selected':'')+'>'+c+'</option>'}).join("")+'</select></label>'+
+    '<label class="field">Product name<input type="text" id="p-name" maxlength="80" autocapitalize="words" data-act="cap-words" value="'+esc(src?src.name:(name||""))+'" placeholder="e.g. LESCO Dimension 19-0-7"></label>'+
+    '<fieldset><legend>How does the label list it?</legend><div class="chips"><button type="button" class="chip" data-act="prod-mode" data-mode="rate" aria-pressed="'+(prodMode==="rate")+'">Amount per 1,000 sq ft</button><button type="button" class="chip" data-act="prod-mode" data-mode="cover" aria-pressed="'+(prodMode==="cover")+'">One bag covers an area</button></div></fieldset>'+
+    '<div id="p-rate"'+(prodMode==="rate"?'':' hidden')+'><label class="field">Apply this much per 1,000 sq ft (optional)<div class="unit-row"><input type="number" id="p-rate-n" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.rate||"")+'" placeholder="e.g. 3.85"><select id="p-unit" aria-label="Unit">'+unitSel(src&&src.unit)+'</select></div></label></div>'+
+    '<div id="p-cover"'+(prodMode==="cover"?'':' hidden')+'><label class="field">One bag or container covers (sq ft, optional)<input type="number" id="p-cover-n" inputmode="numeric" min="1" value="'+esc(src&&src.cover||"")+'" placeholder="e.g. 5000"></label></div>'+
+    '<label class="field">Bag or container size (optional)<div class="unit-row"><input type="number" id="p-pkg" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.pkgSize||"")+'" placeholder="e.g. 50"><select id="p-unit2" aria-label="Unit">'+unitSel(src&&pkgU(src))+'</select></div></label>'+
+    '<label class="field">Price per bag or container (optional)<div class="unit-row"><span class="dollar">$</span><input type="number" id="p-price" inputmode="decimal" step="0.01" min="0" value="'+esc(src&&src.price!=null?src.price:"")+'" placeholder="e.g. 57.94"></div></label>'+
+    '<label class="field">Barcode (UPC, optional)<div class="unit-row"><input type="text" id="p-upc" inputmode="numeric" maxlength="24" value="'+esc(src&&src.upc||upcPrefill||"")+'" placeholder="Scan or type the number under the barcode"><button type="button" class="btn small" data-act="scan-into-product">Scan</button></div></label>'+
+    '<div id="p-spread-wrap"><label class="field">Spreader setting (optional)<input type="text" id="p-spread" maxlength="40" value="'+esc(src&&src.spreader||"")+'" placeholder="e.g. 3.5 on my rotary spreader"></label></div>'+
     '<p class="err" id="p-err" role="alert"></p><div class="actions" id="p-actions">'+prodActionsHTML(!!p)+'</div></div>';
+  syncSpreader();
   var f=document.getElementById("p-name");if(f&&!f.value)f.focus();
 }
 function capWords(v){return v.replace(/(^|\s)(\S)/g,function(m,sp,ch){return sp+ch.toUpperCase()})}
+function isLiquidUnit(u){return /fl oz|ml|gal|qt/.test(u||"")}
+function syncSpreader(){var w=document.getElementById("p-spread-wrap");if(!w)return;var u=(prodMode==="rate"?document.getElementById("p-unit"):document.getElementById("p-unit2"));w.hidden=!!(u&&isLiquidUnit(u.value))}
 function saveProduct(){
   var err=document.getElementById("p-err"),name=capWords(document.getElementById("p-name").value.trim());
   if(!name){err.textContent="Give the product a name.";return}
-  var unit=prodMode==="rate"?document.getElementById("p-unit").value:document.getElementById("p-unit2").value;
-  var rec={name:name.slice(0,80),mode:prodMode,unit:unit,spreader:document.getElementById("p-spread").value.trim().slice(0,40)};
+  var pkgUnit=document.getElementById("p-unit2").value,unit=prodMode==="rate"?document.getElementById("p-unit").value:pkgUnit;
+  var rec={name:name.slice(0,80),mode:prodMode,unit:unit,spreader:isLiquidUnit(unit)?"":document.getElementById("p-spread").value.trim().slice(0,40)};
   var pkg=parseFloat(document.getElementById("p-pkg").value);rec.pkgSize=pkg>0?pkg:null;
   var rawRate=(prodMode==="cover"?document.getElementById("p-cover-n"):document.getElementById("p-rate-n")).value.trim(),num=parseFloat(rawRate);
   if(rawRate&&!(num>0)){err.textContent=prodMode==="cover"?"Enter how many square feet one bag covers, like 5000.":"Enter the amount per 1,000 sq ft, like 3.85.";return}
@@ -357,13 +375,16 @@ function saveProduct(){
   var upc=normUpc(document.getElementById("p-upc").value);
   if(document.getElementById("p-upc").value.trim()&&!upc){err.textContent="The barcode should be 6 to 14 digits.";return}
   var du=upc?findByUpc(upc):null;if(du&&du.id!==prodEditId){err.textContent="That barcode is already saved for "+du.name+".";return}
-  rec.upc=upc||null;
+  rec.upc=upc||null;rec.pkgUnit=pkgUnit;
+  if(prodMode==="rate"&&rec.rate>0&&rec.pkgSize>0&&!convertible(unit,pkgUnit)){err.textContent="The amount is in "+unit+" but the container size is in "+pkgUnit+". One is a liquid and the other a weight, so TurfDiary can\u2019t convert between them. Check the label and pick matching kinds of units.";return}
   rec.cat=document.getElementById("p-cat").value;
   var pr=parseFloat(document.getElementById("p-price").value);
   if(document.getElementById("p-price").value.trim()&&!(pr>=0)){err.textContent="Enter the price as a number, like 57.94.";return}
   rec.price=pr>=0?Math.round(pr*100)/100:null;
   var ex=prodEditId?state.products.find(function(x){return x.id===prodEditId}):null;
   if(ex)Object.assign(ex,rec);else state.products.push(Object.assign({id:"pr_"+uid()},rec));
+  if(fillAfterSave){fillAfterSave=false;var np=findProduct(rec.name);if(np&&document.getElementById("f-product")){setTimeout(function(){fillLogProduct(np)},0)}}
+  if(rec.upc){if(!state.upcMemory)state.upcMemory={};var mem=Object.assign({},rec);delete mem.id;mem.savedOn=todayISO();state.upcMemory[normUpc(rec.upc)]=mem}
   state.updatedAt=Date.now();saveQuiet();closeSheet2();
   if(document.getElementById("f-product")||document.querySelector("[data-mt]")){refreshAllCalcs();var dl=document.getElementById("prod-list");if(dl)dl.innerHTML=productNames().map(function(n){return '<option value="'+esc(n)+'">'}).join("")}
   else render();
@@ -373,8 +394,8 @@ function lawnHTML(){
   var l=state.lawn,sq=lawnSqft(),h='<div class="settings-block" id="lawn-block">';
   if(sq>0)h+='<p class="lawn-total">'+fmtInt(sq)+' <span>sq ft of lawn'+(l.manual>0?' (entered by hand)':'')+'</span></p>';
   else h+='<p>Trace your lawn on an aerial photo to get its size. TurfDiary then works out how much product you need.</p>';
-  if(!(l.manual>0)&&l.areas.length)h+='<div class="list" style="margin-bottom:10px">'+l.areas.map(function(a,i){return '<div class="item"><div class="grow"><div class="t">'+esc(a.name)+'</div><div class="m">'+fmtInt(a.sqft)+' sq ft</div></div><button class="btn small ghost" data-act="lawn-del" data-i="'+i+'">Remove</button></div>'}).join("")+'</div>';
-  h+='<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="lawn-map">'+(l.areas.length?"Edit on map":"Measure on map")+'</button><button class="btn" data-act="lawn-manual">Enter size by hand</button></div>';
+  if(!(l.manual>0)&&l.areas.length)h+=zones().map(function(z){var idx=[];l.areas.forEach(function(a,i){if(a.name===z)idx.push(i)});return (idx.length>1?'<div class="zone-h"><b>'+esc(z)+'</b><span>'+fmtInt(lawnSqft(z))+' sq ft total</span></div>':'')+'<div class="list" style="margin-bottom:10px">'+idx.map(function(i){var a=l.areas[i];return '<div class="item"><div class="grow"><div class="t">'+(idx.length>1?esc(z)+' '+(idx.indexOf(i)+1):esc(z))+'</div><div class="m">'+fmtInt(a.sqft)+' sq ft</div></div><div class="row-acts"><button class="btn mini" data-act="lawn-rename" data-i="'+i+'">Rename</button><button class="btn mini ghost" data-act="lawn-del" data-i="'+i+'">Remove</button></div></div>'}).join("")+'</div>'}).join("");
+  h+='<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="lawn-map">'+(l.areas.length?"Edit On Map":"Measure On Map")+'</button><button class="btn" data-act="lawn-manual">Enter Size By Hand</button></div>';
   h+='<p class="src">Aerial imagery: USGS The National Map and USDA NAIP (public domain). Photos may be a year or two old, and trees can hide parts of the lawn, so treat the size as an estimate.</p></div>';
   return h;
 }
@@ -383,9 +404,9 @@ var CATS=["Fertilizer","Weed control","Insecticide","Pre-emergent","Grass seed",
 /* which product categories each task shows (first one is the default for new products) */
 var TASK_CATS={"Fertilize":["Fertilizer","Biostimulant","Lime"],"Weed control":["Weed control","Pre-emergent"],"Fungicide":["Fungicide"],"Insecticide":["Insecticide"],"Overseed":["Grass seed"]};
 var TASK_CAT={};Object.keys(TASK_CATS).forEach(function(k){TASK_CAT[k]=TASK_CATS[k][0]});
-function catLabel(task){if(EXP_CATS.indexOf(task)>=0)return task.toLowerCase();var cs=TASK_CATS[task];if(!cs)return "";var l=cs.map(function(c){return c.toLowerCase()});return l.length<3?l.join(" and "):l.slice(0,-1).join(", ")+" and "+l[l.length-1]}
+function catLabel(task){if(sheetMode==="expense"&&EXP_CATS.indexOf(task)>=0)return task.toLowerCase();var cs=TASK_CATS[task];if(!cs)return "";var l=cs.map(function(c){return c.toLowerCase()});return l.length<3?l.join(" and "):l.slice(0,-1).join(", ")+" and "+l[l.length-1]}
 function prodCat(p){return CATS.indexOf(p.cat)>=0?p.cat:"Other"}
-function productsForTask(task){if(EXP_CATS.indexOf(task)>=0){var ec=task==="Other supplies"?"Other":task;return state.products.filter(function(p){return prodCat(p)===ec})}var cs=TASK_CATS[task];return cs?state.products.filter(function(p){return cs.indexOf(prodCat(p))>=0}):state.products.slice()}
+function productsForTask(task){if(sheetMode==="expense"&&EXP_CATS.indexOf(task)>=0){var ec=task==="Other supplies"?"Other":task;return state.products.filter(function(p){return prodCat(p)===ec})}var cs=TASK_CATS[task];return cs?state.products.filter(function(p){return cs.indexOf(prodCat(p))>=0}):state.products.slice()}
 function suggestNames(task){
   var out=productsForTask(task).map(function(p){return p.name});
   recentProducts(task||null).forEach(function(n){if(out.indexOf(n)<0&&(!TASK_CAT[task]||!findProduct(n)))out.push(n)});
@@ -395,8 +416,8 @@ function dlOptions(task){return suggestNames(task).map(function(n){return '<opti
 function productsHTML(){
   var sq=lawnSqft();
   if(!state.products.length)return '<div class="settings-block"><p>Save each product\u2019s rate once, from its label. When you log work with that product, TurfDiary shows how much you need for your lawn.</p></div>';
-  var h='<div class="prod-groups">'+(sq>0?'':'<p class="note"><button class="link" data-act="tab" data-tab="settings">Measure your lawn in Settings</button> to see how much of each product you need.</p>');
-  h+=CATS.filter(function(c){return state.products.some(function(p){return prodCat(p)===c})}).map(function(c){var ps=state.products.filter(function(p){return prodCat(p)===c});return '<h3 class="cat-h">'+esc(c)+' <span>'+ps.length+'</span></h3><div class="list">'+ps.map(function(p){return '<div class="item"><div class="grow"><div class="t">'+esc(p.name)+'</div><div class="m">'+esc(prodSummary(p))+'</div>'+(sq>0?'<div class="calc-ok small">'+esc(prodCalc(p,sq))+'</div>':'')+(p.upc?'<div class="m small">Barcode '+esc(p.upc)+'</div>':'')+'</div><div class="row-acts"><button class="btn small" data-act="prod-edit" data-id="'+esc(p.id)+'" aria-label="Edit '+esc(p.name)+'">Edit</button><button class="btn small ghost" data-act="prod-del-ask" data-id="'+esc(p.id)+'" aria-label="Delete '+esc(p.name)+'">Delete</button></div></div>'}).join("")+'</div>'}).join("");
+  var h='<div class="prod-groups">'+(sq>0?'<p class="calc-note" style="margin:0 0 10px">Amounts are suggestions based on the label rates you entered. Always follow the product label.</p>':'<p class="note"><button class="link" data-act="tab" data-tab="settings">Measure your lawn in Settings</button> to see how much of each product you need.</p>');
+  h+=CATS.filter(function(c){return state.products.some(function(p){return prodCat(p)===c})}).map(function(c){var ps=state.products.filter(function(p){return prodCat(p)===c});return '<h3 class="cat-h">'+esc(c)+' <span>'+ps.length+'</span></h3><div class="list">'+ps.map(function(p){return '<div class="item"><div class="grow"><div class="t">'+esc(p.name)+'</div><div class="m">'+esc(prodSummary(p))+'</div>'+(sq>0?'<div class="calc-ok small">'+esc(prodCalc(p,sq))+'</div>':'')+(sq>0&&hasRate(p)&&zones().length>1?'<div class="zone-amts">'+zones().map(function(z){return '<span><b>'+esc(z)+':</b> '+esc(amtShort(p,lawnSqft(z)))+'</span>'}).join("")+'</div>':'')+'</div><div class="row-acts"><button class="btn small" data-act="prod-edit" data-id="'+esc(p.id)+'" aria-label="Edit '+esc(p.name)+'">Edit</button><button class="btn small ghost" data-act="prod-del-ask" data-id="'+esc(p.id)+'" aria-label="Delete '+esc(p.name)+'">Delete</button></div></div>'}).join("")+'</div>'}).join("");
   return h+'</div>';
 }
 function openManualLawn(){
@@ -422,7 +443,9 @@ function openMap(){
   el.innerHTML='<div class="map-top"><button class="btn small" data-act="map-close">Cancel</button><div class="map-read" id="map-read" aria-live="polite">Finding your location\u2026</div><button class="btn small primary" data-act="map-save">Save</button></div>'+
     '<div class="map-box" id="map-box"><div class="map-imgs" id="map-imgs"></div><svg class="map-svg" id="map-svg"></svg>'+
     '<div class="map-zoom"><button class="btn small" data-act="map-zin" aria-label="Zoom in">+</button><button class="btn small" data-act="map-zout" aria-label="Zoom out">\u2212</button><button class="btn small" data-act="map-me" aria-label="Center on my location">\u25CE</button></div>'+
-    '<div class="map-hint" id="map-hint">Outline one section of lawn at a time. Tap its corners, then tap Add section. TurfDiary adds the sections together.</div></div>'+
+    '<div class="map-mode" role="group" aria-label="Map mode"><button class="mm" data-act="map-mode" data-mode="move" aria-pressed="true">\u270B Move map</button><button class="mm" data-act="map-mode" data-mode="draw" aria-pressed="false">\u270F\uFE0F Outline grass</button></div>'+
+    '<div class="map-hint" id="map-hint"></div></div>'+
+    '<div class="map-name" id="map-name" hidden></div>'+
     '<div class="map-sections" id="map-sections"></div>'+
     '<div class="map-bottom"><button class="btn small" data-act="map-undo">Undo point</button><button class="btn small" data-act="map-clear">Clear</button><button class="btn small primary" data-act="map-finish">+ Add section</button></div>'+
     '<p class="map-src">Imagery: USGS The National Map / USDA NAIP</p>';
@@ -432,8 +455,10 @@ function openMap(){
   if(MAP.done.length){var a0=MAP.done[0].pts,c0=a0.reduce(function(t,p){return[t[0]+p[0]/a0.length,t[1]+p[1]/a0.length]},[0,0]);setTimeout(function(){if(MAP)setMapCenter(c0[0],c0[1],0.18)},0)}
   var start=state.wxLoc?[state.wxLoc.lat,state.wxLoc.lon]:[39.5,-98.35];
   setMapCenter(start[0],start[1],state.wxLoc?1.2:400);
+  MAP.mode="move";MAP.trace=null;
   if(!MAP.done.length)mapLocate(true);else mapRead();
-  bindMap(box);
+  bindMap(box);setHint();
+  if(!state.mapIntroSeen)showMapIntro();
   window.addEventListener("resize",mapResize);
 }
 function setMapCenter(lat,lng,res){var m=toMerc(lat,lng);MAP.cx=m[0];MAP.cy=m[1];if(res)MAP.res=res;mapDraw();mapLoad()}
@@ -468,36 +493,78 @@ function mapDraw(){
 }
 function mapRead(){
   var cur=MAP.pts.length>2?polyAreaSqft(MAP.pts):0,tot=MAP.done.reduce(function(t,a){return t+a.sqft},0);
-  document.getElementById("map-read").innerHTML='Total <b>'+fmtInt(tot+cur)+'</b> sq ft<br><span>'+(MAP.pts.length>2?'This section: '+fmtInt(cur)+' sq ft':MAP.pts.length?'Keep tapping corners\u2026':'Tap to start a section')+'</span>';
-  document.getElementById("map-sections").innerHTML=MAP.done.map(function(a,i){return '<span class="sec-chip">'+esc(a.name)+': '+fmtInt(a.sqft)+' sq ft<button type="button" data-act="map-secdel" data-i="'+i+'" aria-label="Remove '+esc(a.name)+'">\u00d7</button></span>'}).join("")+(MAP.done.length>1||(MAP.done.length&&MAP.pts.length>2)?'<span class="sec-sum">= '+fmtInt(tot+cur)+' sq ft</span>':'');
+  document.getElementById("map-read").innerHTML='Total <b>'+fmtInt(tot+cur)+'</b> sq ft<br><span>'+(MAP.pts.length>2?'This section: '+fmtInt(cur)+' sq ft':MAP.pts.length?'Keep outlining\u2026':'No section in progress')+'</span>';
+  document.getElementById("map-sections").innerHTML=MAP.done.map(function(a,i){return '<span class="sec-chip">'+esc(a.name)+': '+fmtInt(a.sqft)+' sq ft<button type="button" data-act="map-secdel" data-i="'+i+'" aria-label="Remove '+esc(a.name)+'">\u00d7</button></span>'}).join("")+(function(){var zs=[];MAP.done.forEach(function(a){var z=zs.find(function(x){return x.n===a.name});if(z)z.s+=a.sqft;else zs.push({n:a.name,s:a.sqft})});return zs.length>1?'<span class="sec-sum">'+zs.map(function(z){return esc(z.n)+' '+fmtInt(z.s)}).join(" + ")+' = '+fmtInt(tot)+' sq ft</span>':''})();
 }
 function bindMap(box){
   box.addEventListener("pointerdown",function(e){if(e.target.closest("button"))return;box.setPointerCapture(e.pointerId);MAP.ptrs[e.pointerId]={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY};MAP.moved=Object.keys(MAP.ptrs).length>1});
   box.addEventListener("pointermove",function(e){
     var p=MAP.ptrs[e.pointerId];if(!p)return;
     var ids=Object.keys(MAP.ptrs);
-    if(ids.length===1){var dx=e.clientX-p.x,dy=e.clientY-p.y;if(Math.abs(e.clientX-p.sx)+Math.abs(e.clientY-p.sy)>8)MAP.moved=true;if(MAP.moved){MAP.cx-=dx*MAP.res;MAP.cy+=dy*MAP.res;mapDraw()}}
-    else if(ids.length===2){var o=MAP.ptrs[ids[0]===String(e.pointerId)?ids[1]:ids[0]];var d0=Math.hypot(p.x-o.x,p.y-o.y),d1=Math.hypot(e.clientX-o.x,e.clientY-o.y);if(d0>0&&d1>0){MAP.res=Math.min(400,Math.max(0.05,MAP.res*d0/d1));mapDraw()}}
+    if(ids.length===1){
+      var dx=e.clientX-p.x,dy=e.clientY-p.y;if(Math.abs(e.clientX-p.sx)+Math.abs(e.clientY-p.sy)>8)MAP.moved=true;
+      if(MAP.moved&&MAP.mode==="move"){MAP.cx-=dx*MAP.res;MAP.cy+=dy*MAP.res;mapDraw()}
+      else if(MAP.moved&&MAP.mode==="draw"&&!MAP.multi){
+        var r=box.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+        if(!MAP.trace){MAP.trace={x:p.sx-r.left,y:p.sy-r.top};var m0=unscr(MAP.trace.x,MAP.trace.y);MAP.pts.push(fromMerc(m0[0],m0[1]))}
+        if(Math.hypot(px-MAP.trace.x,py-MAP.trace.y)>=14){var m1=unscr(px,py);MAP.pts.push(fromMerc(m1[0],m1[1]));MAP.trace={x:px,y:py};mapDraw();mapRead()}
+      }
+    }
+    else if(ids.length===2){MAP.multi=true;var o=MAP.ptrs[ids[0]===String(e.pointerId)?ids[1]:ids[0]];var d0=Math.hypot(p.x-o.x,p.y-o.y),d1=Math.hypot(e.clientX-o.x,e.clientY-o.y);if(d0>0&&d1>0){MAP.res=Math.min(400,Math.max(0.05,MAP.res*d0/d1))}MAP.cx-=(e.clientX-p.x)/2*MAP.res;MAP.cy+=(e.clientY-p.y)/2*MAP.res;mapDraw()}
     p.x=e.clientX;p.y=e.clientY;
   });
   function up(e){
     var p=MAP&&MAP.ptrs[e.pointerId];if(!p)return;
     delete MAP.ptrs[e.pointerId];
-    if(!MAP.moved&&e.type==="pointerup"){var r=box.getBoundingClientRect(),m=unscr(e.clientX-r.left,e.clientY-r.top);MAP.pts.push(fromMerc(m[0],m[1]));mapDraw();mapRead()}
-    if(!Object.keys(MAP.ptrs).length)mapLoad();
+    if(!MAP.moved&&!MAP.multi&&e.type==="pointerup"){
+      if(MAP.mode==="draw"){var r=box.getBoundingClientRect(),m=unscr(e.clientX-r.left,e.clientY-r.top);MAP.pts.push(fromMerc(m[0],m[1]));mapDraw();mapRead();setHint()}
+      else setHint("You\u2019re in Move map mode. Tap \u201cOutline grass\u201d to start outlining.");
+    }
+    if(MAP.trace){MAP.trace=null;setHint()}
+    if(!Object.keys(MAP.ptrs).length){MAP.multi=false;mapLoad()}
   }
   box.addEventListener("pointerup",up);box.addEventListener("pointercancel",up);
   box.addEventListener("wheel",function(e){e.preventDefault();MAP.res=Math.min(400,Math.max(0.05,MAP.res*(e.deltaY>0?1.25:0.8)));mapDraw();mapLoad()},{passive:false});
 }
+function setHint(msg){
+  var h=document.getElementById("map-hint");if(!h||!MAP)return;
+  if(msg){h.textContent=msg;return}
+  if(MAP.mode==="move")h.textContent=MAP.pts.length?"Map mode: drag to move, pinch to zoom. Tap Outline grass to keep outlining.":"Drag to move the map and pinch to zoom until your yard fills the screen. Then tap \u201cOutline grass.\u201d";
+  else h.textContent=MAP.pts.length<3?"Trace along the edge of the grass with your finger, or tap each corner. Use two fingers to move the map.":"Keep going around the edge. When the shape is closed, tap \u201cAdd section.\u201d";
+}
+function setMapMode(m){MAP.mode=m;document.querySelectorAll(".mm").forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.mode===m))});MAP.box.classList.toggle("drawing",m==="draw");setHint()}
+function showMapIntro(){
+  var d=document.createElement("div");d.className="map-intro";d.id="map-intro";
+  d.innerHTML='<div class="mi-card"><h2>How to measure your lawn</h2><ol>'+
+    '<li><b>Find your yard.</b> In <b>Move map</b> mode, drag with one finger and pinch to zoom until your yard fills the screen.</li>'+
+    '<li><b>Outline the grass.</b> Tap <b>Outline grass</b>, then trace around the edge of the lawn with your finger, or tap each corner. Leave out the house, driveway and beds.</li>'+
+    '<li><b>Add the section.</b> Tap <b>Add section</b> and name it, like Front yard or Back yard.</li>'+
+    '<li><b>Repeat</b> for each separate part of your yard, then tap <b>Save</b>.</li></ol>'+
+    '<button class="btn primary" data-act="map-intro-ok" style="width:100%">Got it</button></div>';
+  MAP.el.appendChild(d);
+}
+function showNameBar(){
+  var n=document.getElementById("map-name"),last=MAP.lastName||"";
+  var opts=["Front yard","Back yard","Side yard"];zones().concat(MAP.done.map(function(a){return a.name})).forEach(function(z){if(opts.indexOf(z)<0)opts.push(z)});
+  n.hidden=false;
+  n.innerHTML='<b>Which part of your yard is this?</b><div class="chips">'+opts.map(function(o){return '<button type="button" class="chip'+(o===last?' sel':'')+'" data-act="map-name" data-name="'+esc(o)+'">'+esc(o)+'</button>'}).join("")+'</div>'+
+    '<div class="unit-row"><input type="text" id="map-name-in" maxlength="30" placeholder="Or type a name, like Side strip" autocapitalize="words"><button class="btn small primary" data-act="map-name-custom">Use</button></div>'+
+    '<p class="m" style="margin:6px 0 0">Sections with the same name are added together, like two parts of the front yard.</p>';
+}
+function nameSection(name){
+  name=(name||"").trim().slice(0,30);if(!name)return;
+  MAP.done.push({name:name,sqft:Math.round(polyAreaSqft(MAP.pending)),pts:MAP.pending.map(function(p){return[+p[0].toFixed(6),+p[1].toFixed(6)]})});
+  MAP.lastName=name;MAP.pending=null;MAP.pts=[];document.getElementById("map-name").hidden=true;mapDraw();mapRead();
+  setHint("Added to "+name+". Outline another part of your yard, or tap Save when you\u2019re done.");
+}
 function mapFinish(){
-  if(MAP.pts.length<3){document.getElementById("map-hint").textContent="Tap at least three corners to make a section.";return}
-  var n=1;while(MAP.done.some(function(a){return a.name==="Section "+n}))n++;
-  MAP.done.push({name:"Section "+n,sqft:Math.round(polyAreaSqft(MAP.pts)),pts:MAP.pts.map(function(p){return[+p[0].toFixed(6),+p[1].toFixed(6)]})});
-  MAP.pts=[];mapDraw();mapRead();document.getElementById("map-hint").textContent="Section added. Outline the next section of lawn, or tap Save when you\u2019re done.";
+  if(MAP.pts.length<3){setHint(MAP.mode==="move"?"Tap \u201cOutline grass\u201d first, then trace around the edge of the lawn.":"Outline at least three corners of the grass first.");return}
+  MAP.pending=MAP.pts.slice();showNameBar();
 }
 function closeMap(){if(!MAP)return;window.removeEventListener("resize",mapResize);MAP.el.remove();MAP=null;document.body.style.overflow=""}
 function mapSave(){
-  if(MAP.pts.length>2)mapFinish();
+  if(MAP.pending){nameSection(MAP.lastName||"Front yard")}
+  else if(MAP.pts.length>2){MAP.pending=MAP.pts.slice();nameSection(MAP.lastName||(MAP.done.length?"Back yard":"Front yard"))}
   if(!MAP.done.length&&!state.lawn.areas.length){document.getElementById("map-hint").textContent="Outline at least one section first, then tap Save.";return}
   state.lawn.areas=MAP.done;state.lawn.manual=null;closeMap();persist();
 }
@@ -547,9 +614,9 @@ function closeScanner(){
 function showProductCard(p){
   sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pc-title">'+
     '<p class="pc-match">\u2713 Matches your saved product</p><h2 id="pc-title">'+esc(p.name)+'</h2>'+
-    '<p class="m" style="margin:0 0 10px">'+esc(prodSummary(p))+(p.upc?'. Barcode '+esc(p.upc):'')+'</p>'+
-    '<div class="pc-need">'+esc(prodCalc(p,lawnSqft()))+(p.price!=null?'<div class="pc-cost">'+(prodCostUsed(p,lawnSqft())!=null?'Cost for your lawn: '+money(prodCostUsed(p,lawnSqft()))+'. ':'')+'Price: '+money(p.price)+' a '+pkgWord(p,1)+'.</div>':'')+'</div>'+
-    '<div class="actions"><button class="btn ghost" data-act="prod-edit" data-id="'+esc(p.id)+'" style="margin-right:auto">Edit</button><button class="btn ghost" data-act="prod-close">Close</button><button class="btn primary" data-act="pc-log" data-name="'+esc(p.name)+'">Log work with it</button></div></div>';
+    '<p class="m" style="margin:0 0 10px">'+esc(prodSummary(p))+'</p>'+
+    '<div class="pc-need">'+esc(prodCalc(p,lawnSqft()))+(p.price!=null?'<div class="pc-cost">'+(prodCostUsed(p,lawnSqft())!=null?'Cost for your lawn: '+money(prodCostUsed(p,lawnSqft()))+'. ':'')+'Price: '+money(p.price)+' a '+pkgWord(p,1)+'.</div>':'')+'<div class="calc-note">'+CALC_NOTE+'</div></div>'+
+    '<div class="actions"><button class="btn ghost" data-act="prod-edit" data-id="'+esc(p.id)+'" style="margin-right:auto">Edit</button><button class="btn ghost" data-act="prod-close">Close</button><button class="btn primary" data-act="pc-log" data-name="'+esc(p.name)+'">Log Work With It</button></div></div>';
 }
 function showUnknownCode(code){
   sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="uc-title"><h2 id="uc-title">New barcode</h2>'+
@@ -696,16 +763,16 @@ function openReceipt(){
   closeSheet();
   RC={photo:null,data:null,rows:[]};
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rc-title"><h2 id="rc-title">Scan a receipt</h2>'+
-    '<p class="note">Take a flat, well-lit photo of the whole receipt. TurfDiary reads it on your phone, picks out your products and prices, and learns your store\u2019s wording so the next scan is faster.</p>'+
-    '<div class="toolbar" style="justify-content:flex-start"><label class="btn primary file-btn">Take photo<input type="file" accept="image/*" capture="environment" class="vh" data-act="rc-file" aria-label="Take a photo of your receipt"></label><label class="btn file-btn">From gallery<input type="file" accept="image/*" class="vh" data-act="rc-file" aria-label="Choose a receipt photo"></label></div>'+
+    '<p class="note">Take a flat, well-lit photo of the whole receipt. TurfDiary reads it on your phone, picks out your products and prices, and learns your store\u2019s wording so the next scan is faster. Emailed receipts work too: pick the PDF, or share it to TurfDiary from your email app.</p>'+
+    '<div class="toolbar" style="justify-content:flex-start"><label class="btn primary file-btn">Take photo<input type="file" accept="image/*" capture="environment" class="vh" data-act="rc-file" aria-label="Take a photo of your receipt"></label><label class="btn file-btn">From gallery or PDF<input type="file" accept="image/*,application/pdf,.pdf" class="vh" data-act="rc-file" aria-label="Choose a receipt photo or PDF"></label></div>'+
     '<p class="err" id="rc-msg" role="status"></p><div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button></div></div>';
   document.addEventListener("keydown",onKey);
 }
 function rcFile(file){
   var msg=document.getElementById("rc-msg");if(!file||!msg)return;
   msg.style.color="var(--muted)";msg.textContent="Reading your receipt\u2026 The first scan downloads the text reader, so it can take a little longer.";
-  var pid="p_"+uid();
-  shrink(file).then(function(b){return photoPut(pid,b).then(function(){RC.photo=pid;newUploads.push(pid);return ocrReceipt(b,function(p){msg.textContent="Reading your receipt\u2026 "+Math.round(p*100)+"%"})})})
+  var pid="p_"+uid(),isPdf=/pdf/i.test(file.type||"")||/\.pdf$/i.test(file.name||"");
+  (isPdf?pdfToImage(file):Promise.resolve(file)).then(function(f){return shrink(f)}).then(function(b){return photoPut(pid,b).then(function(){RC.photo=pid;newUploads.push(pid);return ocrReceipt(b,function(p){msg.textContent="Reading your receipt\u2026 "+Math.round(p*100)+"%"})})})
   .then(function(text){var d=parseReceipt(text);if(!d.items.length&&d.total==null){msg.style.color="";msg.textContent="Couldn\u2019t find any prices. Try a flatter, brighter photo, or add the expense by hand.";return}RC.data=d;RC.rows=d.items.map(function(it){var m=rcMatch(it);return{it:it,pid:m?m.p.id:"__supplies",how:m?m.how:"",upd:true}});showReceipt()})
   .catch(function(){msg.style.color="";msg.textContent="Couldn\u2019t read the receipt. Check your connection the first time you scan, then try again."});
 }
@@ -752,7 +819,7 @@ function rcSave(totalOnly){
 
 /* ---------- quicker logging helpers ---------- */
 function lastCostFor(task,product){var best=null;state.entries.forEach(function(e){if(e.task===task&&e.kind!=="expense"&&e.product===product&&e.cost>0&&(!best||e.date>best.date))best=e});return best?best.cost:null}
-function costGuess(task,product){if(!product)return null;var p=findProduct(product),c=p?prodCostUsed(p,lawnSqft()):null;return c!=null?c:lastCostFor(task,product)}
+function costGuess(task,product){if(!product)return null;var p=findProduct(product),c=p?prodCostUsed(p,areaSqft()):null;return c!=null?c:lastCostFor(task,product)}
 function autoFill(){
   if(editId||sheetMode==="expense")return;
   var fp=document.getElementById("f-product"),fc=document.getElementById("f-cost"),note=document.getElementById("auto-note");if(!fp)return;
@@ -780,8 +847,8 @@ function backupBanner(){
   var now=Date.now(),first=state.entries.reduce(function(m,e){return e.date<m?e.date:m},"9999");
   var ref=state.lastBackup||parse(first).getTime(),days=Math.floor((now-ref)/86400000);
   if(days<30||(state.backupSnooze&&now<state.backupSnooze))return "";
-  return '<section class="backup-banner" role="status"><div><b>Back up your diary</b><span>'+(state.lastBackup?'It\u2019s been '+days+' days since your last backup.':'You haven\u2019t saved a backup yet.')+' Your diary is stored only on this phone.</span></div>'+
-    '<div class="bb-acts"><button class="btn small ghost" data-act="backup-later">Later</button><button class="btn small primary" data-act="export">Save backup</button></div></section>';
+  return '<section class="backup-banner" role="status"><div><b>Back Up Your Diary</b><span>'+(state.lastBackup?'It\u2019s been '+days+' days since your last backup.':'You haven\u2019t saved a backup yet.')+' Your diary is stored only on this phone.</span></div>'+
+    '<div class="bb-acts"><button class="btn small ghost" data-act="backup-later">Later</button><button class="btn small primary" data-act="export">Save Backup</button></div></section>';
 }
 function openOnboarding(step){
   ONB=step;var h='<div class="scrim" data-act="close-sheet"></div><div class="sheet onb" id="onb" role="dialog" aria-modal="true" aria-labelledby="onb-title">';
@@ -789,13 +856,13 @@ function openOnboarding(step){
   if(step===1){
     h+='<h2 id="onb-title">Welcome to TurfDiary</h2><p class="note">Let\u2019s set up three things so the app can help from day one. You can change any of them later in Settings.</p>'+
       '<h3 class="sub-h">Local weather</h3><p class="note" style="margin-top:0">See today\u2019s conditions, the week ahead, and rain and frost tips for planning yard work.</p>'+
-      (state.wxLoc?'<p class="onb-ok">\u2713 Weather is set'+(state.wxLoc.place?' for '+esc(state.wxLoc.place):'')+'</p>':'<button class="btn primary" data-act="onb-wx">Use my location</button>')+
+      (state.wxLoc?'<p class="onb-ok">\u2713 Weather is set'+(state.wxLoc.place?' for '+esc(state.wxLoc.place):'')+'</p>':'<button class="btn primary" data-act="onb-wx">Use My Location</button>')+
       (onbMsg?'<p class="err" role="alert">'+esc(onbMsg)+'</p>':'');
   }else if(step===2){
     var sq=lawnSqft();
     h+='<h2 id="onb-title">Your lawn size</h2><p class="note">TurfDiary uses it to tell you how much product to buy and what each application costs.</p>'+
       (sq>0?'<p class="onb-ok">\u2713 '+fmtInt(sq)+' sq ft of lawn</p>':'')+
-      '<div class="toolbar" style="justify-content:flex-start"><button class="btn '+(sq>0?'':'primary')+'" data-act="lawn-map">'+(sq>0?"Measure again":"Measure on map")+'</button><button class="btn" data-act="lawn-manual">Enter size by hand</button></div>';
+      '<div class="toolbar" style="justify-content:flex-start"><button class="btn '+(sq>0?'':'primary')+'" data-act="lawn-map">'+(sq>0?"Measure Again":"Measure On Map")+'</button><button class="btn" data-act="lawn-manual">Enter Size By Hand</button></div>';
   }else{
     var have={};state.schedules.forEach(function(x){have[x.task]=x.every});
     h+='<h2 id="onb-title">Reminders</h2><p class="note">Pick the jobs you want reminders for. TurfDiary counts from the last time you log each one.</p><div class="list onb-list">'+
@@ -861,10 +928,10 @@ function lockKey(k){
     });
   }
 }
-function unlockApp(){locked=false;lockFails=0;lockPin="";var el=document.getElementById("lockview");if(el)el.remove()}
+function unlockApp(){locked=false;lockFails=0;lockPin="";var el=document.getElementById("lockview");if(el)el.remove();if(pendingLaunch){var pa=pendingLaunch;pendingLaunch=null;setTimeout(function(){doLaunch(pa)},200)}}
 function tryBio(){var bio=bioPlugin();if(!bio)return;bio.verifyIdentity({reason:"Unlock TurfDiary",title:"Unlock TurfDiary"}).then(unlockApp).catch(function(){})}
 function lockHTML(){
-  if(!lockCfg)return '<div class="settings-block"><p>Ask for a PIN each time TurfDiary opens, so nobody else using this phone can see your diary or spending.'+(bioPlugin()?" You can also unlock with your fingerprint or face.":"")+'</p><button class="btn primary" data-act="lock-setup">Turn on app lock</button></div>';
+  if(!lockCfg)return '<div class="settings-block"><p>Ask for a PIN each time TurfDiary opens, so nobody else using this phone can see your diary or spending.'+(bioPlugin()?" You can also unlock with your fingerprint or face.":"")+'</p><button class="btn primary" data-act="lock-setup">Turn On App Lock</button></div>';
   return '<div class="settings-block"><p><b>App lock is on.</b> TurfDiary asks for your PIN when it opens and after you\u2019ve been away for a minute.</p>'+
     (bioPlugin()?'<label class="switch-row" style="margin-bottom:10px"><span>Unlock with fingerprint or face</span><input type="checkbox" class="switch" data-act="lock-bio-toggle"'+(lockCfg.bio?' checked':'')+'></label>':'')+
     '<div class="toolbar" style="justify-content:flex-start"><button class="btn" data-act="lock-change">Change PIN</button><button class="btn" data-act="lock-off">Turn off</button></div></div>';
@@ -905,6 +972,187 @@ function lockForgot(){
     '<div class="actions" style="justify-content:center"><button class="btn ghost" data-act="lock-back">Back</button><button class="btn danger" data-act="lock-erase">Erase and start over</button></div>';
 }
 
+/* ---------- launch shortcuts, Share to TurfDiary, and calendar export ---------- */
+var pendingLaunch=null;
+function launchAction(){
+  var q=new URLSearchParams(location.search),a=q.get("action");if(!a)return;
+  try{history.replaceState(null,"",location.pathname)}catch(e){}
+  if(locked){pendingLaunch=a;return}
+  doLaunch(a);
+}
+function doLaunch(a){
+  if(a==="mow"){
+    tab="home";render();var t=todayISO();
+    if(state.entries.some(function(e){return e.task==="Mow"&&e.date===t&&e.kind!=="expense"})){setStatus("Mow is already logged for today");return}
+    state.entries.push({id:uid(),date:t,task:"Mow",cost:0,note:"",product:"",photos:[],quick:true,weather:wxNowText()});setStatus("Mow logged for today");persist();setTimeout(playMowAnim,60);
+  }else if(a==="receipt")openReceipt();
+  else if(a==="log")openSheet();
+  else if(a==="shared"){
+    if(!window.caches){return}
+    caches.open("turfdiary-share").then(function(c){return c.match("./shared-receipt").then(function(r){if(!r)return null;return r.blob().then(function(b){c.delete("./shared-receipt");return b})})})
+      .then(function(b){if(!b){setStatus("Nothing was shared");return}openReceipt();rcFile(b)});
+  }
+}
+function loadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve();
+  return new Promise(function(ok,bad){var sc=document.createElement("script");sc.src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";sc.onload=function(){window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";ok()};sc.onerror=bad;document.head.appendChild(sc)});
+}
+function pdfToImage(blob){
+  return Promise.all([loadPdfJs(),blob.arrayBuffer()]).then(function(r){return window.pdfjsLib.getDocument({data:r[1]}).promise}).then(function(doc){return doc.getPage(1)}).then(function(pg){
+    var vp=pg.getViewport({scale:2.2}),c=document.createElement("canvas");c.width=vp.width;c.height=vp.height;
+    var ctx=c.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+    return pg.render({canvasContext:ctx,viewport:vp}).promise.then(function(){return new Promise(function(ok){c.toBlob(ok,"image/jpeg",0.92)})});
+  });
+}
+function nextDue(s){var t=todayISO(),last=lastDone(s.task),every=Math.max(1,+s.every||7),d=last?addDays(last,every):t;return d<t?t:d}
+function gcalUrl(s){
+  var d=nextDue(s).replace(/-/g,""),e=addDays(nextDue(s),1).replace(/-/g,"");
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent("TurfDiary: "+s.task)+"&dates="+d+"/"+e+
+    "&details="+encodeURIComponent("Repeats every "+s.every+" days. Log it in TurfDiary when it's done.")+"&recur="+encodeURIComponent("RRULE:FREQ=DAILY;INTERVAL="+s.every);
+}
+function icsFile(){
+  var now=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,""),L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TurfDiary//Reminders//EN","CALSCALE:GREGORIAN"];
+  state.schedules.forEach(function(s,i){var d=nextDue(s);L.push("BEGIN:VEVENT","UID:turfdiary-"+i+"-"+d+"@turfdiary.github.io","DTSTAMP:"+now,"DTSTART;VALUE=DATE:"+d.replace(/-/g,""),"DTEND;VALUE=DATE:"+addDays(d,1).replace(/-/g,""),"RRULE:FREQ=DAILY;INTERVAL="+s.every,"SUMMARY:TurfDiary: "+s.task,"DESCRIPTION:Repeats every "+s.every+" days. Log it in TurfDiary when it's done.","BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:"+s.task+" is due today","TRIGGER:PT8H","END:VALARM","END:VEVENT")});
+  L.push("END:VCALENDAR");return L.join("\r\n")+"\r\n";
+}
+function openCalendar(){
+  if(!state.schedules.length){setStatus("Add a reminder first");return}
+  document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cal-title"><h2 id="cal-title">Add reminders to your calendar</h2>'+
+    '<p class="note">Each reminder repeats on its schedule, starting from its next due date. Calendar events won\u2019t shift if you mow early or late, so Coming up in TurfDiary stays the most accurate.</p>'+
+    '<h3 class="sub-h">Google Calendar</h3><div class="list">'+state.schedules.map(function(s){return '<div class="item"><div class="grow"><div class="t">'+esc(s.task)+'</div><div class="m">Every '+esc(s.every)+' days, starting '+esc(fmtWeekday(nextDue(s)))+'</div></div><a class="btn small" href="'+esc(gcalUrl(s))+'" target="_blank" rel="noopener">Add</a></div>'}).join("")+'</div>'+
+    '<h3 class="sub-h">Apple, Outlook or other calendars</h3><p class="note" style="margin-top:0">Download one file with all your reminders, then open it to add them.</p><button class="btn primary" data-act="cal-ics">Download calendar file</button>'+
+    '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-act="close-sheet">Done</button></div></div>';
+  document.addEventListener("keydown",onKey);
+}
+function downloadIcs(){
+  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([icsFile()],{type:"text/calendar"}));a.download="turfdiary-reminders.ics";document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},2000);setStatus("Calendar file saved to your downloads");
+}
+
+/* ---------- soil tests: store exactly what's on the lab report ---------- */
+var SOIL_FIELDS=[
+  {g:"Soil",k:"ph",l:"pH"},{g:"Soil",k:"bph",l:"Buffer pH"},{g:"Soil",k:"om",l:"Organic matter",u:"%"},{g:"Soil",k:"cec",l:"CEC",u:"meq/100 g"},
+  {g:"Major nutrients",k:"p",l:"Phosphorus (P)",n:1},{g:"Major nutrients",k:"k",l:"Potassium (K)",n:1},{g:"Major nutrients",k:"ca",l:"Calcium (Ca)",n:1},{g:"Major nutrients",k:"mg",l:"Magnesium (Mg)",n:1},{g:"Major nutrients",k:"s",l:"Sulfur (S)",n:1},
+  {g:"Micronutrients",k:"fe",l:"Iron (Fe)",n:1},{g:"Micronutrients",k:"mn",l:"Manganese (Mn)",n:1},{g:"Micronutrients",k:"zn",l:"Zinc (Zn)",n:1},{g:"Micronutrients",k:"cu",l:"Copper (Cu)",n:1},{g:"Micronutrients",k:"b",l:"Boron (B)",n:1},
+  {g:"Other",k:"na",l:"Sodium (Na)",n:1},{g:"Other",k:"ss",l:"Soluble salts",u:"mmhos/cm"}
+];
+var soilView="products",soilEdit=null,soilPhotos=[];
+function soilTests(){if(!Array.isArray(state.soilTests))state.soilTests=[];return state.soilTests}
+function soilUnit(f,t){return f.n?(t.unit||"ppm"):(f.u||"")}
+function soilVal(f,t){var v=t.vals&&t.vals[f.k];return v==null||v===""?null:v}
+function prevSoil(t){var ts=soilTests().filter(function(x){return x.id!==t.id&&(x.area||"")===(t.area||"")&&x.date<t.date}).sort(function(a,b){return a.date<b.date?1:-1});return ts[0]||null}
+function soilListHTML(){
+  var ts=soilTests().slice().sort(function(a,b){return a.date<b.date?1:-1});
+  if(!ts.length)return '<div class="settings-block"><p>Keep each soil test from your lab here: pH, organic matter, nutrients and the lab\u2019s recommendations, plus a photo of the report. Over the years, you\u2019ll see how your soil is changing.</p></div>';
+  return '<div class="list">'+ts.map(function(t){
+    var keys=["ph","om","p","k"].map(function(k){var f=SOIL_FIELDS.find(function(x){return x.k===k}),v=soilVal(f,t);return v==null?"":'<span class="soil-chip"><b>'+esc(f.k==="om"?"OM":f.k==="ph"?"pH":f.k.toUpperCase())+'</b> '+esc(v)+(f.n||f.u==="%"?(f.u==="%"?"%":" "+esc(soilUnit(f,t))):"")+'</span>'}).join("");
+    return '<button class="item soil-item" data-act="soil-view" data-id="'+esc(t.id)+'"><div class="date"><span>'+parse(t.date).getDate()+'</span><small>'+esc(parse(t.date).toLocaleDateString(undefined,{month:"short",year:"2-digit"}))+'</small></div><div class="grow"><div class="t">'+esc(t.area||"Whole lawn")+(t.lab?' <span class="m" style="font-weight:500">'+esc(t.lab)+'</span>':'')+'</div><div class="soil-chips">'+(keys||'<span class="m">Tap to view</span>')+'</div></div><span class="chev">\u203A</span></button>';
+  }).join("")+'</div>';
+}
+function openSoilForm(id){
+  var t=id?soilTests().find(function(x){return x.id===id}):null;soilEdit=t?t.id:null;soilPhotos=t&&t.photos?t.photos.slice():[];
+  var zs=zones(),groups=[];SOIL_FIELDS.forEach(function(f){if(groups.indexOf(f.g)<0)groups.push(f.g)});
+  var h='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="st-title"><h2 id="st-title">'+(t?"Edit Soil Test":"Add a Soil Test")+'</h2>'+
+    '<p class="note">Fill in only what\u2019s printed on your report. Empty boxes are left off.</p>'+
+    '<div class="two-col"><label class="field">Date sampled<input type="date" id="st-date" value="'+esc(t?t.date:todayISO())+'"></label>'+
+    '<label class="field">Lab (optional)<input type="text" id="st-lab" maxlength="40" autocapitalize="words" value="'+esc(t&&t.lab||"")+'" placeholder="e.g. UT Soil Lab"></label></div>'+
+    (zs.length?'<label class="field">Part of the yard<select id="st-area"><option value="">Whole lawn</option>'+zs.map(function(z){return '<option'+(t&&t.area===z?' selected':'')+'>'+esc(z)+'</option>'}).join("")+'</select></label>':'')+
+    '<div class="field" style="margin-bottom:10px">Photo of the report (optional)<div class="thumbs" id="st-photos"></div></div>'+
+    '<label class="field">Nutrient units on your report<select id="st-unit"><option value="ppm"'+(!t||t.unit!=="lb/acre"?' selected':'')+'>ppm (parts per million)</option><option value="lb/acre"'+(t&&t.unit==="lb/acre"?' selected':'')+'>lb/acre</option></select></label>';
+  groups.forEach(function(g){
+    h+='<h3 class="sub-h">'+esc(g)+'</h3><div class="soil-grid">'+SOIL_FIELDS.filter(function(f){return f.g===g}).map(function(f){var v=t?soilVal(f,t):null;return '<label class="field">'+esc(f.l)+(f.u?' <span class="m">('+esc(f.u)+')</span>':'')+'<input type="number" step="any" inputmode="decimal" data-soil="'+f.k+'" value="'+esc(v==null?"":v)+'"></label>'}).join("")+'</div>';
+  });
+  h+='<h3 class="sub-h">Lab recommendations</h3><label class="field">Lime<input type="text" id="st-lime" maxlength="120" value="'+esc(t&&t.lime||"")+'" placeholder="e.g. 50 lb per 1,000 sq ft"></label>'+
+    '<label class="field">Fertilizer<input type="text" id="st-fert" maxlength="160" value="'+esc(t&&t.fert||"")+'" placeholder="e.g. 1 lb N per 1,000 sq ft in Sept and Nov"></label>'+
+    '<label class="field">Other notes<textarea id="st-notes" rows="2" maxlength="400">'+esc(t&&t.notes||"")+'</textarea></label>'+
+    '<p class="err" id="st-err" role="alert"></p><div class="actions">'+(t?'<button class="btn ghost" data-act="soil-del" data-id="'+esc(t.id)+'" style="margin-right:auto">Delete</button>':'')+'<button class="btn ghost" data-act="close-sheet">Cancel</button><button class="btn primary" data-act="soil-save">Save soil test</button></div></div>';
+  document.getElementById("sheet").innerHTML=h;document.addEventListener("keydown",onKey);renderSoilPhotos();
+}
+function renderSoilPhotos(){
+  var box=document.getElementById("st-photos");if(!box)return;
+  box.innerHTML=soilPhotos.map(function(id,i){return '<span class="thumb-wrap">'+pimg(id,"thumb","Report photo "+(i+1))+'<button type="button" class="thumb-x" data-act="soil-photo-x" data-i="'+i+'" aria-label="Remove photo">\u00d7</button></span>'}).join("")+
+    (soilPhotos.length<4?'<label class="thumb thumb-add">Take photo<input type="file" accept="image/*" capture="environment" class="vh" data-act="soil-photo" aria-label="Photograph the report"></label><label class="thumb thumb-add">From gallery<input type="file" accept="image/*" class="vh" data-act="soil-photo" aria-label="Choose a report photo"></label>':'');
+  hydrate();
+}
+function addSoilPhoto(file){var id="p_"+uid();shrink(file).then(function(b){return photoPut(id,b)}).then(function(){soilPhotos.push(id);newUploads.push(id);renderSoilPhotos()}).catch(function(){var e=document.getElementById("st-err");if(e)e.textContent="Couldn\u2019t add that photo."})}
+function saveSoil(){
+  var vals={},any=false,err=document.getElementById("st-err");
+  document.querySelectorAll("[data-soil]").forEach(function(inp){var v=inp.value.trim();if(v!==""){var n=parseFloat(v);if(!isNaN(n)){vals[inp.dataset.soil]=n;any=true}}});
+  var lime=document.getElementById("st-lime").value.trim(),fert=document.getElementById("st-fert").value.trim(),notes=document.getElementById("st-notes").value.trim();
+  if(!any&&!lime&&!fert&&!notes&&!soilPhotos.length){err.textContent="Enter at least one result from your report, or add a photo of it.";return}
+  var ar=document.getElementById("st-area"),rec={date:document.getElementById("st-date").value||todayISO(),lab:document.getElementById("st-lab").value.trim(),area:ar?ar.value:"",unit:document.getElementById("st-unit").value,vals:vals,lime:lime,fert:fert,notes:notes,photos:soilPhotos.slice()};
+  var ex=soilEdit?soilTests().find(function(x){return x.id===soilEdit}):null;
+  if(ex){(ex.photos||[]).forEach(function(id){if(rec.photos.indexOf(id)<0)dropPhoto(id,ex.id)});Object.assign(ex,rec)}else soilTests().push(Object.assign({id:"st_"+uid()},rec));
+  newUploads=[];closeSheet();soilView="soil";persist();setStatus("Soil test saved");
+}
+function showSoil(id){
+  var t=soilTests().find(function(x){return x.id===id});if(!t)return;
+  var prev=prevSoil(t),groups=[],h="";SOIL_FIELDS.forEach(function(f){if(groups.indexOf(f.g)<0)groups.push(f.g)});
+  groups.forEach(function(g){
+    var rows=SOIL_FIELDS.filter(function(f){return f.g===g&&soilVal(f,t)!=null});if(!rows.length)return;
+    h+='<h3 class="sub-h">'+esc(g)+'</h3><div class="list">'+rows.map(function(f){
+      var v=soilVal(f,t),pv=prev?soilVal(f,prev):null,ch="";
+      if(pv!=null&&(prev.unit||"ppm")===(t.unit||"ppm")){var d=Math.round((v-pv)*100)/100;ch=d===0?'<span class="soil-ch">same as last test</span>':'<span class="soil-ch">'+(d>0?"\u25B2 up ":"\u25BC down ")+Math.abs(d)+' since '+esc(parse(prev.date).toLocaleDateString(undefined,{month:"short",year:"numeric"}))+'</span>'}
+      return '<div class="item"><div class="grow"><div class="t">'+esc(f.l)+'</div>'+ch+'</div><div class="soil-v">'+esc(v)+' <span>'+esc(soilUnit(f,t))+'</span></div></div>';
+    }).join("")+'</div>';
+  });
+  var recs=[["Lime",t.lime],["Fertilizer",t.fert],["Notes",t.notes]].filter(function(r){return r[1]});
+  if(recs.length)h+='<h3 class="sub-h">Lab recommendations</h3><div class="settings-block">'+recs.map(function(r){return '<p><b>'+r[0]+':</b> '+esc(r[1])+'</p>'}).join("")+'</div>';
+  if(t.photos&&t.photos.length)h+='<h3 class="sub-h">Report</h3><div class="row-thumbs big">'+t.photos.map(function(pid){return '<button class="rthumb" data-act="soil-photo-view" data-id="'+esc(pid)+'" aria-label="View report photo">'+pimg(pid)+'</button>'}).join("")+'</div>';
+  document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sv-title"><h2 id="sv-title">Soil test: '+esc(fmtLong(t.date))+'</h2><p class="m" style="margin:0 0 6px">'+esc((t.area||"Whole lawn")+(t.lab?", "+t.lab:""))+'</p>'+(h||'<p class="note">No results entered.</p>')+
+    '<div class="actions" style="margin-top:14px"><button class="btn ghost" data-act="close-sheet" style="margin-right:auto">Close</button><button class="btn primary" data-act="soil-edit" data-id="'+esc(t.id)+'">Edit</button></div></div>';
+  document.addEventListener("keydown",onKey);hydrate();
+}
+
+/* ---------- add a product: scan first, reuse what was entered last time ---------- */
+function openAddProduct(cat){
+  sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ap-title"><h2 id="ap-title" style="text-align:center">Add a Product</h2>'+
+    '<p class="note" style="text-align:center">Scan the barcode first. If you\u2019ve entered this product before, TurfDiary fills in the application rate and the rest for you.</p>'+
+    '<button class="btn primary big-btn" data-act="ap-scan" data-cat="'+esc(cat||"")+'">'+ICONS.barcode+'Scan the barcode</button>'+
+    '<button class="btn big-btn" data-act="ap-type" data-cat="'+esc(cat||"")+'">Type it in instead</button>'+
+    '<div class="actions" style="justify-content:center;margin-top:6px"><button class="btn ghost" data-act="prod-close">Cancel</button></div></div>';
+}
+function rememberProduct(p){if(!p||!p.upc)return;if(!state.upcMemory)state.upcMemory={};var m=Object.assign({},p);delete m.id;m.savedOn=m.savedOn||todayISO();state.upcMemory[normUpc(p.upc)]=m}
+function addByBarcode(code,cat){
+  var u=normUpc(code)||String(code||""),p=findByUpc(u);
+  if(p){
+    sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ap2-title"><p class="pc-match">\u2713 Already in your products</p><h2 id="ap2-title">'+esc(p.name)+'</h2>'+
+      '<div class="pc-need"><div><b>Application rate:</b> '+esc(!hasRate(p)?"not entered yet":p.mode==="cover"?"1 "+pkgWord(p,1)+" covers "+fmtInt(p.cover)+" sq ft":(Math.round(p.rate*100)/100).toLocaleString()+" "+p.unit+" per 1,000 sq ft")+'</div>'+(p.pkgSize?'<div><b>Size:</b> '+esc(fmtAmt(p.pkgSize)+" "+pkgU(p))+'</div>':'')+(p.price!=null?'<div><b>Last price:</b> '+money(p.price)+'</div>':'')+(p.spreader?'<div><b>Spreader setting:</b> '+esc(p.spreader)+'</div>':'')+'</div>'+
+      '<div class="actions" style="flex-wrap:wrap"><button class="btn ghost" data-act="prod-close" style="margin-right:auto">Done</button><button class="btn" data-act="prod-edit" data-id="'+esc(p.id)+'">Update details</button><button class="btn primary" data-act="pc-log" data-name="'+esc(p.name)+'">Log Work With It</button></div></div>';
+    return;
+  }
+  var mem=state.upcMemory&&state.upcMemory[u];
+  if(mem){openProduct(null,"",u,cat,mem,"Filled in from the last time you saved this product"+(mem.savedOn?" ("+fmt(mem.savedOn)+")":"")+". Check the label if anything has changed, then save.");return}
+  openProduct(null,"",u,cat,null,"New barcode. Enter the application rate from the label once, and next time a scan fills it in for you.");
+}
+
+/* ---------- scanning a barcode while logging work ---------- */
+var CAT_WORK={"Fertilizer":"Fertilize","Biostimulant":"Fertilize","Lime":"Fertilize","Weed control":"Weed control","Pre-emergent":"Weed control","Fungicide":"Fungicide","Insecticide":"Insecticide","Grass seed":"Overseed"};
+var fillAfterSave=false;
+function pickTaskChip(task){var c=document.querySelector('.sheet [data-act="pick-task"][data-task="'+task+'"]');if(c&&c.getAttribute("aria-pressed")!=="true")c.click()}
+function fillLogProduct(p){
+  if(!document.getElementById("f-product")){return}
+  if(sheetMode==="expense"){var ec=expCat(p);if(!sheetTasks.length)pickTaskChip(ec)}
+  else{var t=CAT_WORK[prodCat(p)],had=sheetTasks.length;if(t&&sheetTasks.indexOf(t)<0&&(!had||(had===1&&!document.getElementById("f-product").value))){pickTaskChip(t);if(had)var added=t}}
+  if(sheetTasks.length>1){
+    readMulti();var t2=CAT_WORK[prodCat(p)],target=sheetTasks.indexOf(t2)>=0?t2:sheetTasks.find(function(x){return !(multiVals[x]&&multiVals[x].p)})||sheetTasks[0];
+    multiVals[target]=multiVals[target]||{};multiVals[target].p=p.name;var cg=costGuess(target,p.name);if(cg!=null&&!multiVals[target].c)multiVals[target].c=String(cg);
+    var mf=document.getElementById("multi-fields");if(mf)mf.innerHTML="";renderTaskFields();
+  }else{
+    var fi=document.getElementById("f-product");fi.value=p.name;fi.dataset.auto="";var an=document.getElementById("auto-note");if(an)an.innerHTML="";
+    var fc=document.getElementById("f-cost");if(fc&&(!fc.value||fc.dataset.auto==="1")){var g=costGuess(sheetTasks[0],p.name);fc.value=g!=null?g:"";fc.dataset.auto=g!=null?"1":""}
+    updateCalc(fi);updateMoreSum();
+  }
+  setStatus(typeof added!=="undefined"&&added?"Added "+added+" for "+p.name:"Scanned: "+p.name);
+}
+function logScanResult(code){
+  var u=normUpc(code)||String(code||""),p=findByUpc(u);
+  if(p){fillLogProduct(p);return}
+  var mem=state.upcMemory&&state.upcMemory[u];fillAfterSave=true;
+  if(mem)openProduct(null,"",u,null,mem,"You\u2019ve used this product before. Its details are filled in from last time. Check the label if anything changed, then save.");
+  else openProduct(null,"",u,null,null,"New product. Enter its application rate from the label once. Next time, scanning it fills everything in.");
+}
+
 /* ---------- views ---------- */
 function ordinal(n){var s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])}
 function tally(e){
@@ -919,7 +1167,7 @@ function tally(e){
 function entryRow(e,del){
   var d=parse(e.date);
   return '<div class="item"><div class="date"><span>'+d.getDate()+'</span><small>'+esc(d.toLocaleDateString(undefined,{month:"short"}))+'</small></div>'+
-    '<div class="grow"><div class="t">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.weather?'<div class="m">Weather: '+esc(e.weather)+'</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+(del&&e.kind!=="expense"?'<button class="link small again" data-act="log-again" data-id="'+esc(e.id)+'">Log again today</button>':'')+
+    '<div class="grow"><div class="t task-name">'+esc(e.task)+'</div><div class="tally">'+esc(tally(e))+'</div>'+(e.product?'<div class="prod">'+esc(e.product)+'</div>':'')+(e.area?'<div class="m">Area: '+esc(e.area)+'</div>':'')+(e.soilTemp!=null?'<div class="m">Soil '+esc(e.soilTemp)+'\u00b0F</div>':'')+(e.weather?'<div class="m">Weather: '+esc(e.weather)+'</div>':'')+(e.note?'<div class="m">'+esc(e.note)+'</div>':'')+(del&&e.kind!=="expense"?'<button class="btn mini again" data-act="log-again" data-id="'+esc(e.id)+'">Log Again Today</button>':'')+
     (e.photos&&e.photos.length?'<div class="row-thumbs">'+e.photos.map(function(id,i){return '<button class="rthumb" data-act="view-photo" data-id="'+esc(id)+'" aria-label="View '+esc(e.task)+' photo '+(i+1)+'">'+pimg(id)+'</button>'}).join("")+'</div>':'')+'</div>'+
     (e.cost?'<div class="cost">'+money(e.cost)+'</div>':'')+
     (del?'<div class="row-acts"><button class="btn small" data-act="edit-entry" data-id="'+esc(e.id)+'" aria-label="Edit '+esc(e.task)+' on '+esc(fmt(e.date))+'">Edit</button><button class="btn small ghost" data-act="del-entry" data-id="'+esc(e.id)+'" aria-label="Delete '+esc(e.task)+' on '+esc(fmt(e.date))+'">Delete</button></div>':'')+'</div>';
@@ -929,12 +1177,12 @@ function dueItems(){
   var t=todayISO();
   return state.schedules.map(function(s){
     var every=Math.max(1,+s.every||7),last=lastDone(s.task),diff,label,cls="",meta;
-    if(!last){diff=-1e9;label="Not logged yet";cls="soon";meta="Every "+every+" "+pl(every,"day")}
+    if(!last){diff=-1e9;label="Not Logged Yet";cls="soon";meta="Every "+every+" "+pl(every,"day")}
     else{
       var due=addDays(last,every);diff=daysBetween(t,due);
-      if(diff<0){label=(-diff)+" "+pl(-diff,"day")+" overdue";cls="over"}
-      else if(diff===0){label="Due today";cls="over"}
-      else if(diff<=2){label="Due in "+diff+" "+pl(diff,"day");cls="soon"}
+      if(diff<0){label=(-diff)+" "+(diff===-1?"Day":"Days")+" Overdue";cls="over"}
+      else if(diff===0){label="Due Today";cls="over"}
+      else if(diff<=2){label="Due In "+diff+" "+(diff===1?"Day":"Days");cls="soon"}
       else label="Due "+fmtWeekday(due);
       var lp=lastProduct(s.task);
       meta="Every "+every+" "+pl(every,"day")+", last done "+fmt(last)+(lp?" with "+lp:"");
@@ -949,46 +1197,46 @@ function allPhotos(){
 }
 function viewHome(){
   var t=todayISO(),last=lastDone("Mow"),big,sub,yr=t.slice(0,4);
-  if(!last){big="Not yet";sub="No mows logged yet"}
-  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" days ago";sub=parse(last).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}
+  if(!last){big="Not Yet";sub="No mows logged yet"}
+  else{var n=daysBetween(last,t);big=n<=0?"Today":n===1?"Yesterday":n+" Days Ago";sub=parse(last).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}
   var ms=state.schedules.find(function(x){return x.task==="Mow"}),next="";
-  if(ms&&last){var due=addDays(last,Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?(-dd)+" "+pl(-dd,"day")+" overdue":dd===0?"Next mow: today":dd===1?"Next mow: tomorrow":"Next mow: "+fmtWeekday(due)}
+  if(ms&&last){var due=addDays(last,Math.max(1,+ms.every||7)),dd=daysBetween(t,due);next=dd<0?(-dd)+" "+(dd===-1?"Day":"Days")+" Overdue":dd===0?"Next Mow: Today":dd===1?"Next Mow: Tomorrow":"Next Mow: "+fmtWeekday(due)}
   var sq=lawnSqft(),lf=lastDone("Fertilize"),spent=state.entries.reduce(function(a,e){return a+(e.date.slice(0,4)===yr&&e.cost>0?e.cost:0)},0);
-  var fd=lf?daysBetween(lf,t):null,fertTxt=lf?(fd<=0?"Today":fd===1?"Yesterday":fd+" days"):"Not yet",fertNote=lf?(fd>1?"ago":"")+(lastProduct("Fertilize")?(fd>1?", ":"")+lastProduct("Fertilize"):""):"";
+  var fd=lf?daysBetween(lf,t):null,fertTxt=lf?(fd<=0?"Today":fd===1?"Yesterday":fd+" Days"):"Not Yet",fertNote=lf?(fd>1?"ago":"")+(lastProduct("Fertilize")?(fd>1?", ":"")+lastProduct("Fertilize"):""):"";
   var qm=state.entries.find(function(e){return e.task==="Mow"&&e.date===t&&e.quick});
   var mowBtn=qm?'<button class="mow-btn done" data-act="undo-today" data-id="'+esc(qm.id)+'" aria-label="Undo today\u2019s mow">'+ICONS.mower+'<span>Undo</span></button>'
-    :'<button class="mow-btn" data-act="done-today" data-task="Mow" aria-label="Log a mow for today">'+ICONS.mower+'<span>Mowed today</span></button>';
+    :'<button class="mow-btn" data-act="done-today" data-task="Mow" aria-label="Log a mow for today">'+ICONS.mower+'<span>Mowed Today</span></button>';
   function tile(act,extra,label,value,note){return '<button class="hero-tile" data-act="'+act+'"'+extra+'><span class="ht-l">'+esc(label)+'</span><span class="ht-v">'+esc(value)+'</span>'+(note?'<span class="ht-n">'+esc(note)+'</span>':'')+'</button>'}
   var h='<header class="app-head"><span class="app-name">TurfDiary</span><button class="icon-btn" data-act="tab" data-tab="settings" aria-label="Settings">'+ICONS.gear+'</button></header>'+
-    '<section class="hero"><div class="hero-top"><span>Last mow</span>'+mowBtn+'</div>'+
+    '<section class="hero"><div class="hero-top"><span>Last Mow</span>'+mowBtn+'</div>'+
     '<div class="big">'+esc(big)+'</div><div class="hero-row"><span class="hero-sub">'+esc(sub)+'</span>'+(next?'<span class="hero-next'+(/overdue/.test(next)?' late':'')+'">'+esc(next)+'</span>':'')+'</div>'+
     '<div class="hero-tiles">'+
-      tile("tab",' data-tab="settings"',"Lawn",sq>0?fmtInt(sq):"Measure",sq>0?"sq ft":"tap to start")+
+      tile("tab",' data-tab="settings"',"Lawn",sq>0?fmtInt(sq):"Measure",sq>0?"sq ft":"Tap to Start")+
       tile("open-log",' data-task="Fertilize" aria-label="Log fertilizer. Last fertilized: '+esc(fertTxt+(fertNote?" "+fertNote:""))+'"',"Fertilized",fertTxt,fertNote)+
       tile("tab",' data-tab="spend"',"Spent",money(spent),"in "+yr)+
     '</div></section>';
   h=h.replace('</header>','</header>'+backupBanner());
   h+=wxCardHTML();
-  h+='<div class="sec-head"><h2>Coming up</h2><button class="link small" data-act="tab" data-tab="settings">Edit reminders</button></div>';
+  h+='<div class="sec-head"><h2>Coming Up</h2><button class="btn mini" data-act="tab" data-tab="settings">Edit Reminders</button></div>';
   var items=dueItems();
   if(!items.length)h+='<p class="empty">No reminders set. <button class="link" data-act="tab" data-tab="settings">Add a reminder</button></p>';
   else h+='<div class="list">'+items.map(function(it){
-    return '<div class="item"><button class="grow due-open" data-act="open-log" data-task="'+esc(it.task)+'" aria-label="Log '+esc(it.task)+' with details"><div class="t">'+esc(it.task)+' <span class="chev" aria-hidden="true">\u203A</span></div><div class="s '+it.cls+'">'+esc(it.label)+'</div><div class="m">'+esc(it.meta)+'</div></button>'+
+    return '<div class="item"><button class="grow due-open" data-act="open-log" data-task="'+esc(it.task)+'" aria-label="Log '+esc(it.task)+' with details"><div class="t task-name">'+esc(it.task)+' <span class="chev" aria-hidden="true">\u203A</span></div><div class="s '+it.cls+'">'+esc(it.label)+'</div><div class="m">'+esc(it.meta)+'</div></button>'+
       (function(){var q=state.entries.find(function(e){return e.task===it.task&&e.date===todayISO()&&e.quick});
-        return q?'<button class="btn small ghost" data-act="undo-today" data-id="'+esc(q.id)+'" aria-label="Undo '+esc(it.task)+' logged today">Undo</button>':'<button class="btn small" data-act="done-today" data-task="'+esc(it.task)+'">Done today</button>'})()+'</div>';
+        return q?'<button class="btn small ghost" data-act="undo-today" data-id="'+esc(q.id)+'" aria-label="Undo '+esc(it.task)+' logged today">Undo</button>':'<button class="btn small" data-act="done-today" data-task="'+esc(it.task)+'">Done Today</button>'})()+'</div>';
   }).join("")+'</div>';
-  h+='<h2>Recent</h2>';
+  h+='<div class="sec-head"><h2>Recent</h2>'+(state.entries.length?'<button class="btn mini" data-act="tab" data-tab="history">See Full Diary</button>':'')+'</div>';
   var rec=sorted().slice(0,4);
-  if(!rec.length)h+='<p class="empty">Nothing logged yet. Tap Log work after your next job in the yard.</p>';
-  else h+='<div class="list">'+rec.map(function(e){return entryRow(e,true)}).join("")+'</div><p><button class="link" data-act="tab" data-tab="history">See full diary</button></p>';
+  if(!rec.length)h+='<p class="empty">Nothing logged yet. Tap Log Work after your next job in the yard.</p>';
+  else h+='<div class="list">'+rec.map(function(e){return entryRow(e,true)}).join("")+'</div>';
   var ph=allPhotos().reverse().slice(0,8);
-  if(ph.length)h+='<h2>Progress photos</h2><div class="row-thumbs big">'+ph.map(function(x){return '<button class="rthumb" data-act="view-photo" data-id="'+esc(x.id)+'" aria-label="View '+esc(x.e.task)+' photo from '+esc(fmt(x.e.date))+'">'+pimg(x.id)+'</button>'}).join("")+'</div>';
+  if(ph.length)h+='<h2>Progress Photos</h2><div class="row-thumbs big">'+ph.map(function(x){return '<button class="rthumb" data-act="view-photo" data-id="'+esc(x.id)+'" aria-label="View '+esc(x.e.task)+' photo from '+esc(fmt(x.e.date))+'">'+pimg(x.id)+'</button>'}).join("")+'</div>';
   return h;
 }
 function viewHistory(){
   var used=TASKS.filter(function(t){return state.entries.some(function(e){return e.task===t})});
   var h='<h1 class="page">Diary</h1><input type="search" class="search" data-act="diary-search" placeholder="Search products, notes or stores" aria-label="Search your diary" value="'+esc(diaryQ)+'"><div class="toolbar" style="margin-top:10px"><select data-act="hist-filter" aria-label="Show task"><option value="all">All tasks</option>'+
-    used.map(function(t){return '<option'+(t===histFilter?' selected':'')+'>'+esc(t)+'</option>'}).join("")+'</select><button class="btn primary" data-act="open-log">Log work</button></div>';
+    used.map(function(t){return '<option'+(t===histFilter?' selected':'')+'>'+esc(t)+'</option>'}).join("")+'</select><button class="btn primary" data-act="open-log">Log Work</button></div>';
   return h+'<div id="diary-list">'+diaryListHTML()+'</div>';
 }
 function viewSpend(){
@@ -1000,8 +1248,8 @@ function viewSpend(){
   var total=0,months=[0,0,0,0,0,0,0,0,0,0,0,0],byTask={};
   ye.forEach(function(e){total+=e.cost;months[+e.date.slice(5,7)-1]+=e.cost;byTask[e.task]=(byTask[e.task]||0)+e.cost});
   var h='<h1 class="page">Spending</h1><div class="toolbar" style="margin-bottom:14px"><select data-act="spend-year" aria-label="Year">'+
-    years.map(function(y){return '<option'+(y===spendYear?' selected':'')+'>'+y+'</option>'}).join("")+'</select><button class="btn primary" data-act="add-expense">Add expense</button><button class="btn" data-act="rc-open">Scan receipt</button></div>';
-  if(!ye.length)return h+'<p class="empty">No costs logged in '+spendYear+'. Tap Add expense, or add a cost when you log work.</p>';
+    years.map(function(y){return '<option'+(y===spendYear?' selected':'')+'>'+y+'</option>'}).join("")+'</select><button class="btn primary" data-act="add-expense">Add Expense</button><button class="btn" data-act="rc-open">Scan Receipt</button></div>';
+  if(!ye.length)return h+'<p class="empty">No costs logged in '+spendYear+'. Tap Add Expense, or add a cost when you log work.</p>';
   var second=spendYear===cy?{v:months[new Date().getMonth()],l:"This month"}:{v:total/12,l:"Average per month"};
   h+='<div class="stats"><div class="stat"><b>'+money(total)+'</b><span>Total in '+spendYear+'</span></div><div class="stat"><b>'+money(second.v)+'</b><span>'+second.l+'</span></div></div>';
   var max=Math.max.apply(null,months)||1;
@@ -1020,6 +1268,7 @@ function viewRemind(){
     return '<div class="item"><div class="grow"><div class="t">'+esc(s.task)+'</div><label class="every">Every <input type="number" min="1" max="365" inputmode="numeric" value="'+esc(s.every)+'" data-act="sched-every" data-i="'+i+'" aria-label="Days between '+esc(s.task)+'"> days</label></div>'+
       '<button class="btn small ghost" data-act="del-sched" data-i="'+i+'">Remove</button></div>';
   }).join("")+'</div>';
+  if(state.schedules.length)h+='<div class="toolbar" style="justify-content:flex-start;margin-top:12px"><button class="btn" data-act="cal-open">'+ICONS.calendar+'Add to My Calendar</button></div>';
   var free=TASKS.filter(function(t){return t!=="Supplies"&&!state.schedules.some(function(s){return s.task===t})});
   if(free.length)h+='<h2>Add a reminder</h2><div class="add"><select id="new-task" aria-label="Task">'+free.map(function(t){return '<option>'+esc(t)+'</option>'}).join("")+
     '</select><span>every</span><input id="new-every" type="number" min="1" max="365" inputmode="numeric" value="14" aria-label="Days"><span>days</span><button class="btn primary" data-act="add-sched">Add</button></div><p class="err" id="sched-err" role="alert"></p>';
@@ -1027,9 +1276,9 @@ function viewRemind(){
 }
 function viewSettings(){
   var h='<h1 class="page">Settings</h1><h2 style="margin-top:0">My lawn</h2>'+lawnHTML()+'<h2>Reminders</h2>'+viewRemind().replace('<h1 class="page">Reminders</h1>','').replace('<h2>Add a reminder</h2>','<h3 class="sub-h">Add a reminder</h3>')+'<h2>Notifications</h2>'+notifyHTML()+'<h2>Weather</h2>'+wxSettingsHTML()+'<h2>App lock</h2>'+lockHTML()+'<h2>Backup</h2><div class="settings-block"><p>Your log and photos are saved only on this phone. Save a backup file now and then, especially before switching phones. You can protect each backup with a password.</p>'+
-     '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="export">Save backup</button><label class="btn file-btn">Restore backup<input type="file" accept="application/json,.json" class="vh" data-act="import" aria-label="Choose a backup file to restore"></label></div>'+
+     '<div class="toolbar" style="justify-content:flex-start"><button class="btn primary" data-act="export">Save Backup</button><label class="btn file-btn">Restore backup<input type="file" accept="application/json,.json" class="vh" data-act="import" aria-label="Choose a backup file to restore"></label></div>'+
      '<p class="err" id="backup-msg" role="status" style="margin-top:10px"></p></div>'+
-     '<h2>Setup guide</h2><div class="settings-block"><p>Walk through weather, lawn size and reminders again.</p><button class="btn" data-act="onb-again">Run setup again</button></div>';
+     '<h2>Setup guide</h2><div class="settings-block"><p>Walk through weather, lawn size and reminders again.</p><button class="btn" data-act="onb-again">Run Setup Again</button></div>';
   return h;
 }
 var ICONS={
@@ -1039,20 +1288,23 @@ var ICONS={
   spend:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M7 9.5v5M17 9.5v5"/></svg>',
   gear:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>',
   finger:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 11v3a6 6 0 0 1-1 3.3"/><path d="M8.5 9.5A3.5 3.5 0 0 1 15.5 10v2.5c0 2-.4 3.8-1.2 5.5"/><path d="M6 13.5V10a6 6 0 0 1 11.6-2"/><path d="M18 11.5V13c0 1.6-.2 3.1-.6 4.5"/><path d="M5 17c.6-1 1-2.2 1-3.5"/></svg>',
+  calendar:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M12 14h2M16 14h0"/></svg>',
+  barcode:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12M7 6v12M10 6v12M13 6v12M17 6v12M20 6v12"/></svg>',
   plus:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   receipt:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
   mower:'<svg viewBox="0 0 32 24" aria-hidden="true"><path d="M17 12.5L27 2.5"/><path d="M25 1.5l3.5 3.5"/><path d="M3.5 17.5v-3.2a2 2 0 0 1 2-2H19l2.5 3v2.2"/><path d="M9 12.3V9.8h6v2.5"/><circle cx="7" cy="19" r="2.6"/><circle cx="18.5" cy="19" r="2.6"/><path d="M9.6 19h6.3"/><path d="M1.5 22.5h29" stroke-dasharray="1.5 2"/></svg>'
 };
 function viewProducts(){
-  return '<h1 class="page">Products</h1><div class="toolbar" style="justify-content:flex-start;margin-bottom:6px"><button class="btn primary" data-act="prod-new">Add a product</button><button class="btn" data-act="scan-lookup">Scan a barcode</button></div>'+
-    '<h2>My products</h2>'+productsHTML();
+  var seg='<div class="seg" role="tablist" aria-label="Products or soil tests"><button role="tab" data-act="prod-seg" data-v="products" aria-selected="'+(soilView!=="soil")+'">My products</button><button role="tab" data-act="prod-seg" data-v="soil" aria-selected="'+(soilView==="soil")+'">Soil tests'+(soilTests().length?' <span class="chip-sub">'+soilTests().length+'</span>':'')+'</button></div>';
+  if(soilView==="soil")return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 10px"><button class="btn primary" data-act="soil-new">Add a Soil Test</button></div>'+soilListHTML();
+  return '<h1 class="page">Products</h1>'+seg+'<div class="toolbar" style="justify-content:flex-start;margin:12px 0 6px"><button class="btn primary" data-act="prod-new">Add a Product</button><button class="btn" data-act="scan-lookup">Scan a Barcode</button></div>'+productsHTML();
 }
 function openPlus(){
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet plus-sheet" role="dialog" aria-modal="true" aria-labelledby="plus-title"><h2 id="plus-title">Add</h2>'+
-    '<div class="plus-grid"><button class="plus-opt" data-act="plus-log"><b>Log work</b><span>Mowing, fertilizing and other yard jobs</span></button>'+
-    '<button class="plus-opt" data-act="plus-prod"><b>Add a product</b><span>Save its rate, price and barcode</span></button>'+
-    '<button class="plus-opt" data-act="plus-scan"><b>Scan a product</b><span>Check a bag and see how much you need</span></button>'+
-    '<button class="plus-opt" data-act="plus-exp"><b>Add an expense</b><span>Supplies, equipment or other costs</span></button></div>'+
+    '<div class="plus-grid"><button class="plus-opt plus-main" data-act="plus-log">'+ICONS.history+'<b>Log Work</b><span>Mowing, fertilizing and other yard jobs</span></button>'+
+    '<button class="plus-opt" data-act="plus-prod"><b>Add a Product</b><span>Save its rate, price and barcode</span></button>'+
+    '<button class="plus-opt" data-act="plus-scan"><b>Scan a Product</b><span>Check a bag and see how much you need</span></button>'+
+    '<button class="plus-opt plus-wide" data-act="plus-exp"><b>Add an Expense</b><span>Supplies, equipment or other costs</span></button></div>'+
     '<div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button></div></div>';
   document.addEventListener("keydown",onKey);
   var f=document.querySelector(".plus-opt");if(f)f.focus();
@@ -1071,7 +1323,7 @@ function onKey(e){if(e.key==="Escape")closeSheet()}
 function recentProducts(task){var seen=[],out=[];sorted().forEach(function(e){if(e.product&&(!task||e.task===task)&&seen.indexOf(e.product.toLowerCase())<0){seen.push(e.product.toLowerCase());out.push(e.product)}});return out}
 function updateProductChips(){
   var box=document.getElementById("prod-chips");if(!box)return;
-  var c=sheetTask&&(TASK_CAT[sheetTask]||(EXP_CATS.indexOf(sheetTask)>=0&&sheetTask)),list=sheetTask?suggestNames(sheetTask).slice(0,8):[];
+  var c=sheetTask&&(sheetMode==="expense"?(EXP_CATS.indexOf(sheetTask)>=0&&sheetTask):TASK_CAT[sheetTask]),list=sheetTask?suggestNames(sheetTask).slice(0,8):[];
   var dl=document.getElementById("prod-list");if(dl)dl.innerHTML=dlOptions(sheetTask);
   box.innerHTML=list.length?'<span class="m">'+(c?'Your '+esc(catLabel(sheetTask))+' products:':'Used before:')+'</span>'+list.map(function(p){return '<button type="button" class="chip small" data-act="pick-product" data-product="'+esc(p)+'">'+esc(p)+'</button>'}).join(""):(c?'<span class="m">No '+esc(catLabel(sheetTask))+' products saved yet.</span>':"");
 }
@@ -1096,7 +1348,12 @@ function renderTaskFields(){
   if(btn&&!editId&&sheetMode!=="expense")btn.textContent=sheetTasks.length>1?"Save "+sheetTasks.length+" entries":"Save entry";
 }
 var editId=null,sheetMode="log",formPhotos=[],origPhotos=[],newUploads=[],uploading=0;
-function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp){
+function areaPickerHTML(area){
+  var zs=zones();if(zs.length<2)return "";
+  return '<fieldset><legend>Where in the yard?</legend><div class="chips">'+[""].concat(zs).map(function(z){return '<button type="button" class="chip" data-act="pick-area" data-zone="'+esc(z)+'" aria-pressed="'+((area||"")===z)+'">'+esc(z||"Whole lawn")+' <span class="chip-sub">'+fmtInt(z?lawnSqft(z):lawnSqft())+'</span></button>'}).join("")+'</div></fieldset>';
+}
+function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp,area){
+  sheetArea=area&&zones().indexOf(area)>=0?area:"";
   if(soilTemp===undefined||soilTemp==="")soilTemp=null;
   formPhotos=(photos||[]).slice();origPhotos=formPhotos.slice();newUploads=[];uploading=0;
   editId=id||null;sheetMode=mode||"log";var ex=sheetMode==="expense";
@@ -1105,8 +1362,10 @@ function openSheet(task,cost,note,product,date,id,mode,photos,soilTemp){
   var costHTML='<div id="single-cost"><label class="field">'+(ex?"Amount":"Cost (optional)")+'<input type="number" id="f-cost" inputmode="decimal" step="0.01" min="0" placeholder="0.00" value="'+esc(cost||"")+'"></label></div>';
   var openMore=!!editId&&!!((cost&&+cost>0)||note||soilTemp!=null||(photos&&photos.length));
   document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">'+
-    '<h2 id="sheet-title">'+(editId?"Edit entry":ex?"Add expense":"Log work")+'</h2>'+(ex&&!editId?'<button type="button" class="btn rc-btn" data-act="rc-open">'+ICONS.receipt+'Scan a receipt instead</button>':'')+
+    '<h2 id="sheet-title">'+(editId?"Edit Entry":ex?"Add Expense":"Log Work")+'</h2>'+(ex&&!editId?'<button type="button" class="btn rc-btn" data-act="rc-open">'+ICONS.receipt+'Scan a receipt instead</button>':'')+
+    (editId?'':'<button type="button" class="btn big-btn scan-top" data-act="scan-into-log">'+ICONS.barcode+'Scan a Product Barcode</button><p class="m scan-top-note">Scan the bag or bottle you used. TurfDiary fills in the product, picks the task and shows the amount for your lawn.</p>')+
     '<fieldset><legend>'+(ex?"What did you buy?":multiOK?"Tasks (pick one or more)":"Task")+'</legend><div class="chips">'+(ex?EXP_CATS.concat(task&&EXP_CATS.indexOf(task)<0?[task]:[]):TASKS).map(function(t){return '<button type="button" class="chip" data-act="pick-task" data-task="'+esc(t)+'" aria-pressed="'+(t===sheetTask)+'">'+esc(t)+'</button>'}).join("")+'</div></fieldset>'+
+    (ex?'':areaPickerHTML(area))+
     '<div id="single-prod"><label class="field">'+(ex?"Product name (optional)":"Product used (optional)")+'<div class="unit-row"><input type="text" id="f-product" list="prod-list" maxlength="80" autocomplete="off" placeholder="e.g. LESCO Dimension, Kentucky 31 seed" value="'+esc(product||"")+'"><button type="button" class="btn small" data-act="scan-into-log" aria-label="Scan a product barcode">Scan</button></div></label>'+
     '<datalist id="prod-list">'+productNames().map(function(p){return '<option value="'+esc(p)+'">'}).join("")+'</datalist>'+
     '<div class="auto-note" id="auto-note"></div><div class="calc" id="prod-calc"></div><div class="chips prod-chips" id="prod-chips"></div></div><div id="multi-fields"></div>'+
@@ -1191,13 +1450,13 @@ function saveLog(){
     for(var mi=0;mi<sheetTasks.length;mi++){
       var t=sheetTasks[mi],v=multiVals[t]||{},c=0;
       if(v.c&&String(v.c).trim()){c=parseFloat(v.c);if(isNaN(c)||c<0){err.textContent="Enter the cost for "+t+" as a number, like 24.99.";return}}
-      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV,weather:date===todayISO()?wxNowText():""});
+      recs.push({id:uid()+mi,date:date,task:t,cost:Math.round(c*100)/100,note:note,product:String(v.p||"").trim().slice(0,80),photos:formPhotos.slice(),soilTemp:soilV,area:sheetArea||undefined,weather:date===todayISO()?wxNowText():""});
     }
     newUploads=[];
     recs.forEach(function(r){state.entries.push(r)});
     setStatus(recs.length+" tasks logged");closeSheet();persist();return;
   }
-  var rec={kind:sheetMode==="expense"?"expense":undefined,date:date,task:sheetTask,cost:Math.round(cost*100)/100,note:document.getElementById("f-note").value.trim().slice(0,300),product:document.getElementById("f-product").value.trim().slice(0,80),photos:formPhotos.slice()};
+  var rec={kind:sheetMode==="expense"?"expense":undefined,area:sheetMode!=="expense"&&sheetArea?sheetArea:undefined,date:date,task:sheetTask,cost:Math.round(cost*100)/100,note:document.getElementById("f-note").value.trim().slice(0,300),product:document.getElementById("f-product").value.trim().slice(0,80),photos:formPhotos.slice()};
   if(sheetMode!=="expense"){rec.soilTemp=soilV;if(!editId&&date===todayISO()&&wxNowText())rec.weather=wxNowText()}
   origPhotos.forEach(function(id){if(formPhotos.indexOf(id)<0)dropPhoto(id,editId)});
   newUploads=[];
@@ -1227,7 +1486,7 @@ function openBackupSheet(){
     '<label class="field">Password (recommended)<input type="password" id="bk-pass" autocomplete="new-password" placeholder="At least 6 characters"></label>'+
     '<label class="field">Type it again<input type="password" id="bk-pass2" autocomplete="new-password"></label>'+
     '<p class="m" style="margin-top:-4px">Write it down somewhere safe. Without it, a protected backup can\u2019t be restored, and there\u2019s no way to recover it.</p>'+
-    '<p class="err" id="bk-err" role="alert"></p><div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button><button class="btn primary" data-act="bk-save">Save backup</button></div></div>';
+    '<p class="err" id="bk-err" role="alert"></p><div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button><button class="btn primary" data-act="bk-save">Save Backup</button></div></div>';
   document.addEventListener("keydown",onKey);document.getElementById("bk-pass").focus();
 }
 function bkSave(){
@@ -1238,7 +1497,7 @@ function bkSave(){
 }
 function exportBackup(pass){
   backupMsg("Preparing backup\u2026");setStatus(pass?"Encrypting your backup\u2026":"Preparing backup\u2026");
-  var ids=allPhotos().map(function(x){return x.id}),photos={};
+  var ids=allPhotos().map(function(x){return x.id}),photos={};(state.soilTests||[]).forEach(function(t){(t.photos||[]).forEach(function(id){if(ids.indexOf(id)<0)ids.push(id)})});
   ids.reduce(function(p,id){return p.then(function(){return photoGet(id).then(function(b){return b?blobToDataURL(b):null}).then(function(d){if(d)photos[id]=d})})},Promise.resolve())
   .then(function(){
     var data=JSON.stringify({app:"turfdiary",version:1,exported:new Date().toISOString(),state:state,photos:photos});
@@ -1319,7 +1578,7 @@ document.addEventListener("click",function(ev){
     state.entries.push({id:uid(),date:t,task:task,cost:0,note:"",product:"",photos:[],quick:true,weather:wxNowText()});setStatus(task+" logged for today");persist();
     if(el.classList.contains("mow-btn"))playMowAnim();
   }
-  else if(a==="edit-entry"){var en=state.entries.find(function(x){return x.id===el.dataset.id});if(en)openSheet(en.task,en.cost||"",en.note,en.product,en.date,en.id,en.kind==="expense"?"expense":null,en.photos,en.soilTemp)}
+  else if(a==="edit-entry"){var en=state.entries.find(function(x){return x.id===el.dataset.id});if(en)openSheet(en.task,en.cost||"",en.note,en.product,en.date,en.id,en.kind==="expense"?"expense":null,en.photos,en.soilTemp,en.area)}
   else if(a==="view-photo")openViewer(el.dataset.id);
   else if(a==="viewer-prev"){if(viewerIdx>0)showViewer(viewerIdx-1)}
   else if(a==="viewer-next"){if(viewerIdx<viewerList.length-1)showViewer(viewerIdx+1)}
@@ -1369,12 +1628,23 @@ document.addEventListener("click",function(ev){
   else if(a==="onb-done")finishOnboarding();
   else if(a==="onb-again"){openOnboarding(1)}
   else if(a==="rc-open")openReceipt();
+  else if(a==="prod-seg"){soilView=el.dataset.v;render()}
+  else if(a==="soil-new")openSoilForm(null);
+  else if(a==="soil-edit")openSoilForm(el.dataset.id);
+  else if(a==="soil-view")showSoil(el.dataset.id);
+  else if(a==="soil-save")saveSoil();
+  else if(a==="soil-photo-x"){var si=+el.dataset.i,sid=soilPhotos[si];soilPhotos.splice(si,1);var nx=newUploads.indexOf(sid);if(nx>=0){newUploads.splice(nx,1);photoDel(sid)}renderSoilPhotos()}
+  else if(a==="soil-photo-view"){var im=document.querySelector('[data-act="soil-photo-view"][data-id="'+el.dataset.id+'"] img');if(im&&im.src)window.open(im.src,"_blank")}
+  else if(a==="soil-del"){var did3=el.dataset.id;document.getElementById("sheet").innerHTML='<div class="scrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sd-title"><h2 id="sd-title">Delete this soil test?</h2><p class="note">Are you sure? Its results and report photos will be removed. This can\u2019t be undone.</p><div class="actions"><button class="btn ghost" data-act="close-sheet">Cancel</button><button class="btn danger" data-act="soil-del-yes" data-id="'+esc(did3)+'">Delete</button></div></div>'}
+  else if(a==="soil-del-yes"){var did4=el.dataset.id,tt=soilTests().find(function(x){return x.id===did4});if(tt)(tt.photos||[]).forEach(function(pid){dropPhoto(pid,did4)});state.soilTests=soilTests().filter(function(x){return x.id!==did4});closeSheet();persist();setStatus("Soil test deleted")}
+  else if(a==="cal-open")openCalendar();
+  else if(a==="cal-ics")downloadIcs();
   else if(a==="rc-save")rcSave(false);
   else if(a==="rc-total")rcSave(true);
   else if(a==="notify-lead"){notifyCfg().lead=el.dataset.v;persist()}
   else if(a==="notify-task"){var nc=notifyCfg(),all=state.schedules.map(function(x){return x.task}),cur=nc.tasks?nc.tasks.slice():all.slice(),ix=cur.indexOf(el.dataset.task);if(ix>=0)cur.splice(ix,1);else cur.push(el.dataset.task);nc.tasks=cur.length===all.length?null:cur;persist()}
   else if(a==="prod-del-ask"){var dp=state.products.find(function(x){return x.id===el.dataset.id});if(dp){sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pd-title"><h2 id="pd-title">Delete this product?</h2><p class="note">Are you sure you want to delete <b>'+esc(dp.name)+'</b>? Its rate, price and barcode will be removed. This can\u2019t be undone. Work you already logged with it stays in your diary.</p><div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn danger" data-act="prod-del-yes" data-id="'+esc(dp.id)+'">Delete</button></div></div>';var cb2=document.querySelector('#sheet2 [data-act="prod-close"].btn');if(cb2)cb2.focus()}}
-  else if(a==="prod-del-yes"){var did2=el.dataset.id;state.products=state.products.filter(function(x){return x.id!==did2});closeSheet2();persist()}
+  else if(a==="prod-del-yes"){var did2=el.dataset.id;rememberProduct(state.products.find(function(x){return x.id===did2}));state.products=state.products.filter(function(x){return x.id!==did2});closeSheet2();persist()}
   else if(a==="hist-task"){histFilter=state.entries.some(function(e){return e.task===el.dataset.task})?el.dataset.task:"all";tab="history";try{localStorage.setItem(LS_TAB,tab)}catch(e){}render();window.scrollTo(0,0)}
   else if(a==="plus")openPlus();
   else if(a==="plus-log"){closeSheet();openSheet()}
@@ -1386,22 +1656,32 @@ document.addEventListener("click",function(ev){
   else if(a==="use-cost"){var tg=el.dataset.t,inp=tg==="f"?document.getElementById("f-cost"):Array.prototype.find.call(document.querySelectorAll('[data-mt][data-f="c"]'),function(x){return x.dataset.mt===tg});if(inp){inp.value=el.dataset.v;inp.dispatchEvent(new Event("input",{bubbles:true}))}}
   else if(a==="scan-typed"){var tn=normUpc(document.getElementById("scan-num").value);if(!tn){document.getElementById("scan-hint").textContent="Enter the 6 to 14 digit number under the barcode.";return}var cbk=SCAN.onCode;closeScanner();cbk(tn)}
   else if(a==="scan-into-product")openScanner(function(code){var u=document.getElementById("p-upc");if(u)u.value=normUpc(code)||code;var ex2=findByUpc(code);var e2=document.getElementById("p-err");if(ex2&&ex2.id!==prodEditId&&e2)e2.textContent="That barcode is already saved for "+ex2.name+"."});
-  else if(a==="scan-into-log")openScanner(function(code){var p=findByUpc(code),fi=document.getElementById("f-product");if(p&&fi){fi.value=p.name;updateCalc(fi)}else openProduct(null,fi?fi.value:"",normUpc(code)||code)});
+  else if(a==="scan-into-log")openScanner(function(code){logScanResult(code)});
   else if(a==="pc-log"){var nm=el.dataset.name;closeSheet2();openSheet(null,"","",nm)}
-  else if(a==="uc-add"){var up=el.dataset.upc;closeSheet2();openProduct(null,"",up)}
+  else if(a==="uc-add"){var up=el.dataset.upc;closeSheet2();addByBarcode(up)}
   else if(a==="prod-new")openProduct(null,el.dataset.name,null,el.dataset.cat);
+  else if(a==="ap-type"){openProduct(null,"",null,el.dataset.cat||null)}
+  else if(a==="ap-scan"){var apc=el.dataset.cat||null;closeSheet2();openScanner(function(code){addByBarcode(code,apc)})}
   else if(a==="prod-edit")openProduct(el.dataset.id);
   else if(a==="prod-close")closeSheet2();
   else if(a==="prod-save")saveProduct();
   else if(a==="prod-save-norate"){skipRate=true;saveProduct()}
   else if(a==="prod-add-rate"){var pa=document.getElementById("p-actions");if(pa)pa.innerHTML=prodActionsHTML(!!prodEditId);var rf=document.getElementById(prodMode==="cover"?"p-cover-n":"p-rate-n");if(rf){rf.scrollIntoView({block:"center"});rf.focus()}}
-  else if(a==="prod-mode"){prodMode=el.dataset.mode;document.querySelectorAll('[data-act="prod-mode"]').forEach(function(c){c.setAttribute("aria-pressed",String(c===el))});document.getElementById("p-cover").hidden=prodMode!=="cover";document.getElementById("p-rate").hidden=prodMode!=="rate"}
-  else if(a==="prod-del"){if(prodEditId){state.products=state.products.filter(function(x){return x.id!==prodEditId});saveQuiet();closeSheet2();if(document.getElementById("f-product"))refreshAllCalcs();else render()}}
+  else if(a==="prod-mode"){prodMode=el.dataset.mode;document.querySelectorAll('[data-act="prod-mode"]').forEach(function(c){c.setAttribute("aria-pressed",String(c===el))});document.getElementById("p-cover").hidden=prodMode!=="cover";document.getElementById("p-rate").hidden=prodMode!=="rate";syncSpreader()}
+  else if(a==="prod-del"){if(prodEditId){rememberProduct(state.products.find(function(x){return x.id===prodEditId}));state.products=state.products.filter(function(x){return x.id!==prodEditId});saveQuiet();closeSheet2();if(document.getElementById("f-product"))refreshAllCalcs();else render()}}
   else if(a==="lawn-map")openMap();
   else if(a==="lawn-manual")openManualLawn();
   else if(a==="ml-save"){var mv=parseFloat(document.getElementById("ml-n").value);state.lawn.manual=mv>0?Math.round(mv):null;closeSheet2();persist()}
   else if(a==="lawn-del"){state.lawn.areas.splice(+el.dataset.i,1);persist()}
   else if(a==="map-close")closeMap();
+  else if(a==="map-mode")setMapMode(el.dataset.mode);
+  else if(a==="map-intro-ok"){state.mapIntroSeen=true;saveQuiet();var mi=document.getElementById("map-intro");if(mi)mi.remove()}
+  else if(a==="map-name")nameSection(el.dataset.name);
+  else if(a==="map-name-custom"){var ni=document.getElementById("map-name-in");if(ni)nameSection(ni.value)}
+  else if(a==="lawn-rename"){var li=+el.dataset.i,cur=state.lawn.areas[li];sheet2().innerHTML='<div class="scrim" data-act="prod-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rn-title"><h2 id="rn-title">Rename section</h2><div class="chips" style="margin-bottom:12px">'+["Front yard","Back yard","Side yard"].map(function(o){return '<button type="button" class="chip" data-act="rn-pick" data-name="'+o+'">'+o+'</button>'}).join("")+'</div><label class="field">Name<input type="text" id="rn-in" maxlength="30" value="'+esc(cur.name)+'" autocapitalize="words"></label><p class="m">Sections with the same name are added together.</p><div class="actions"><button class="btn ghost" data-act="prod-close">Cancel</button><button class="btn primary" data-act="rn-save" data-i="'+li+'">Save</button></div></div>'}
+  else if(a==="rn-pick"){var rin=document.getElementById("rn-in");if(rin)rin.value=el.dataset.name}
+  else if(a==="rn-save"){var nv=(document.getElementById("rn-in").value||"").trim().slice(0,30);if(nv){state.lawn.areas[+el.dataset.i].name=nv;closeSheet2();persist()}}
+  else if(a==="pick-area"){sheetArea=el.dataset.zone||"";document.querySelectorAll('[data-act="pick-area"]').forEach(function(c){c.setAttribute("aria-pressed",String((c.dataset.zone||"")===sheetArea))});var fc3=document.getElementById("f-cost");if(fc3&&fc3.dataset.auto==="1"){var fp3=document.getElementById("f-product"),g3=costGuess(sheetTasks[0],fp3?fp3.value:"");fc3.value=g3!=null?g3:"";updateMoreSum()}refreshAllCalcs()}
   else if(a==="map-save")mapSave();
   else if(a==="map-finish")mapFinish();
   else if(a==="map-undo"){MAP.pts.pop();mapDraw();mapRead()}
@@ -1424,11 +1704,15 @@ document.addEventListener("input",function(ev){var t=ev.target;
 document.addEventListener("keydown",function(ev){
   if(locked){if(/^\d$/.test(ev.key)){ev.preventDefault();lockKey(ev.key)}else if(ev.key==="Backspace"){ev.preventDefault();lockPin=lockPin.slice(0,-1);drawLock("")}return}
   if(ev.key==="Enter"&&(ev.target.id==="pin-in"||ev.target.id==="bk-pass2"||ev.target.id==="ib-pass")){ev.preventDefault();var b2=document.querySelector(ev.target.id==="pin-in"?'[data-act="pin-next"]':ev.target.id==="ib-pass"?'[data-act="ib-open"]':'[data-act="bk-save"]');if(b2)b2.click();return}
+  if(ev.key==="Enter"&&ev.target.id==="map-name-in"){ev.preventDefault();nameSection(ev.target.value);return}
   if(ev.key==="Enter"&&ev.target.id==="scan-num"){ev.preventDefault();var b=document.querySelector('[data-act="scan-typed"]');if(b)b.click();return}if((ev.key==="Enter"||ev.key===" ")&&ev.target.classList&&ev.target.classList.contains("wx-today")){ev.preventDefault();ev.target.click()}});
 document.addEventListener("change",function(ev){
   var el=ev.target,a=el.dataset&&el.dataset.act;
   if(a==="add-photo"){addPhotos(el.files);el.value="";return}
   if(a==="rc-file"){rcFile(el.files[0]);el.value="";return}
+  if(a==="soil-photo"){if(el.files[0])addSoilPhoto(el.files[0]);el.value="";return}
+  if(el.id==="p-unit"){var u2=document.getElementById("p-unit2"),pk=document.getElementById("p-pkg");if(u2&&(!pk||!pk.value)&&!convertible(el.value,u2.value))u2.value=el.value==="fl oz"||el.value==="ml"?"gal":el.value==="oz"?"lb":el.value;syncSpreader();return}
+  if(el.id==="p-unit2"){syncSpreader();return}
   if(a==="rc-pick"){var rr=RC.rows[+el.dataset.i];rr.pid=el.value;rr.how="";var sh=document.querySelector("#sheet .sheet"),keep=sh?sh.scrollTop:0;showReceipt();sh=document.querySelector("#sheet .sheet");if(sh)sh.scrollTop=keep;return}
   if(a==="rc-upd"){RC.rows[+el.dataset.i].upd=el.checked;return}
   if(a==="rc-tax"){RC.tax=el.checked;return}
@@ -1443,6 +1727,7 @@ document.addEventListener("change",function(ev){
 
 render();
 if(lockCfg)showLock();
+setTimeout(launchAction,350);
 document.addEventListener("visibilitychange",function(){if(!lockCfg)return;if(document.visibilityState==="hidden")hiddenAt=Date.now();else if(hiddenAt&&Date.now()-hiddenAt>60000&&!locked)showLock()});
 scheduleNotifications();
 if(!state.onboarded){if(!state.entries.length&&!state.wxLoc&&!lawnSqft())setTimeout(function(){openOnboarding(1)},300);else{state.onboarded=true;saveQuiet()}}
